@@ -45,6 +45,7 @@ export type Food = {
   carbs_g: number | null;
   fat_g: number | null;
   cached_at: string;
+  source: 'api' | 'manual';
 };
 
 export type FoodLogEntry = {
@@ -118,13 +119,17 @@ export async function deleteSet(id: number): Promise<void> {
 
 // ─── Foods ───────────────────────────────────────────────────────────────────
 
-// Returns a cached food if the barcode is found and cached within 30 days.
+// Returns a cached food for this barcode. Manual entries (the user's own data)
+// never expire; API-sourced entries are only returned if cached within 30 days
+// so stale nutrition data gets refreshed from OpenFoodFacts.
 export async function getFoodByBarcode(barcode: string): Promise<Food | null> {
   const db = await getDb();
   return db.getFirstAsync<Food>(
     `SELECT * FROM foods
      WHERE barcode = ?
-       AND cached_at > date('now', '-30 days')`,
+       AND (source = 'manual' OR cached_at > date('now', '-30 days'))
+     ORDER BY (source = 'manual') DESC
+     LIMIT 1`,
     [barcode]
   );
 }
@@ -140,22 +145,26 @@ export async function searchFoodsByName(query: string): Promise<Food[]> {
 export async function upsertFood(food: Omit<Food, 'id'>): Promise<number> {
   const db = await getDb();
   const existing = food.barcode
-    ? await db.getFirstAsync<Food>('SELECT id FROM foods WHERE barcode = ?', [food.barcode])
+    ? await db.getFirstAsync<Food>('SELECT id, source FROM foods WHERE barcode = ?', [food.barcode])
     : null;
 
   if (existing) {
+    // Never let an API refresh clobber a manual entry — the user's own data wins.
+    if (existing.source === 'manual' && food.source !== 'manual') {
+      return existing.id;
+    }
     await db.runAsync(
-      `UPDATE foods SET name=?, kcal_per_100g=?, protein_g=?, carbs_g=?, fat_g=?, cached_at=?
+      `UPDATE foods SET name=?, kcal_per_100g=?, protein_g=?, carbs_g=?, fat_g=?, cached_at=?, source=?
        WHERE id=?`,
-      [food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.cached_at, existing.id]
+      [food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.cached_at, food.source, existing.id]
     );
     return existing.id;
   }
 
   const result = await db.runAsync(
-    `INSERT INTO foods (barcode, name, kcal_per_100g, protein_g, carbs_g, fat_g, cached_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [food.barcode, food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.cached_at]
+    `INSERT INTO foods (barcode, name, kcal_per_100g, protein_g, carbs_g, fat_g, cached_at, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [food.barcode, food.name, food.kcal_per_100g, food.protein_g, food.carbs_g, food.fat_g, food.cached_at, food.source]
   );
   return result.lastInsertRowId;
 }

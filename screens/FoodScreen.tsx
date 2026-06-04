@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -19,6 +19,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { lookupBarcode, searchByName, type ProductResult } from '../api/openFoodFacts';
 import {
   deleteFoodLogEntry,
+  getFoodByBarcode,
   getFoodLogForDate,
   logFood,
   toDateString,
@@ -28,6 +29,10 @@ import {
 } from '../db/queries';
 import { today } from '../db/queries';
 
+// A product staged for the serving modal, with where it came from so the DB
+// write records the right source ('manual' entries never expire from cache).
+type PendingFood = ProductResult & { source: 'api' | 'manual' };
+
 // ─── Manual entry modal ──────────────────────────────────────────────────────
 
 type ManualEntryProps = {
@@ -35,14 +40,23 @@ type ManualEntryProps = {
   onClose: () => void;
   onSave: (result: ProductResult) => void;
   prefillName?: string;
+  barcode?: string | null;
 };
 
-function ManualEntryModal({ visible, onClose, onSave, prefillName = '' }: ManualEntryProps) {
+function ManualEntryModal({ visible, onClose, onSave, prefillName = '', barcode = null }: ManualEntryProps) {
   const [name, setName] = useState(prefillName);
   const [kcal, setKcal] = useState('');
   const [protein, setProtein] = useState('');
   const [carbs, setCarbs] = useState('');
   const [fat, setFat] = useState('');
+
+  // Reset the form whenever it reopens for a different product.
+  useEffect(() => {
+    if (visible) {
+      setName(prefillName);
+      setKcal(''); setProtein(''); setCarbs(''); setFat('');
+    }
+  }, [visible, prefillName]);
 
   function handleSave() {
     if (!name.trim()) {
@@ -50,7 +64,7 @@ function ManualEntryModal({ visible, onClose, onSave, prefillName = '' }: Manual
       return;
     }
     onSave({
-      barcode: null,
+      barcode,   // carry the scanned barcode so future scans find this entry
       name: name.trim(),
       nutriments: {
         kcal_per_100g: kcal ? parseFloat(kcal) : null,
@@ -60,7 +74,6 @@ function ManualEntryModal({ visible, onClose, onSave, prefillName = '' }: Manual
         incomplete: !kcal || !protein || !carbs || !fat,
       },
     });
-    setName(''); setKcal(''); setProtein(''); setCarbs(''); setFat('');
     onClose();
   }
 
@@ -75,6 +88,7 @@ function ManualEntryModal({ visible, onClose, onSave, prefillName = '' }: Manual
         <ScrollView contentContainerStyle={ms.body} keyboardShouldPersistTaps="handled">
           <Text style={ms.label}>Product name</Text>
           <TextInput style={ms.input} value={name} onChangeText={setName} autoFocus autoCapitalize="words" />
+          {barcode ? <Text style={ms.hint}>Barcode {barcode} — saved so the next scan finds it instantly.</Text> : null}
           <Text style={ms.hint}>Values per 100g</Text>
           <View style={ms.row}>
             <View style={ms.field}>
@@ -162,12 +176,18 @@ export default function FoodScreen() {
   const [searching, setSearching] = useState(false);
 
   const [showCamera, setShowCamera] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const scanningRef = useRef(false);
   const [permission, requestPermission] = useCameraPermissions();
+
+  // Reset scan lock whenever the camera closes.
+  useEffect(() => {
+    if (!showCamera) scanningRef.current = false;
+  }, [showCamera]);
 
   const [manualVisible, setManualVisible] = useState(false);
   const [manualPrefill, setManualPrefill] = useState('');
-  const [servingProduct, setServingProduct] = useState<ProductResult | null>(null);
+  const [manualBarcode, setManualBarcode] = useState<string | null>(null);
+  const [servingProduct, setServingProduct] = useState<PendingFood | null>(null);
 
   const dateStr = toDateString(date);
   const isToday = dateStr === today();
@@ -196,36 +216,56 @@ export default function FoodScreen() {
       if (!granted) { Alert.alert('Camera required', 'Allow camera access in Settings to scan barcodes.'); return; }
     }
     setShowCamera(true);
-    setScanning(false);
   }
 
   async function handleBarcode({ data }: BarcodeScanningResult) {
-    if (scanning) return;
-    setScanning(true);
+    if (scanningRef.current) return;
+    scanningRef.current = true;   // synchronous — blocks all subsequent callbacks immediately
     setShowCamera(false);
 
-    const product = await lookupBarcode(data);
-    if (!product) {
-      Alert.alert('Not found', `"${data}" is not in OpenFoodFacts.`, [
-        { text: 'Add manually', onPress: () => { setManualPrefill(''); setManualVisible(true); } },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-      setScanning(false);
+    // 1. Local cache first — your own manual entries and recent API results.
+    //    Instant, works offline, and the whole point of this feature.
+    const cached = await getFoodByBarcode(data);
+    if (cached) {
+      setServingProduct({
+        barcode: cached.barcode,
+        name: cached.name,
+        nutriments: {
+          kcal_per_100g: cached.kcal_per_100g,
+          protein_g: cached.protein_g,
+          carbs_g: cached.carbs_g,
+          fat_g: cached.fat_g,
+          incomplete: [cached.kcal_per_100g, cached.protein_g, cached.carbs_g, cached.fat_g].some(v => v == null),
+        },
+        source: cached.source,
+      });
       return;
     }
-    setServingProduct(product);
-    setScanning(false);
+
+    // 2. Not cached — ask OpenFoodFacts.
+    const product = await lookupBarcode(data);
+    if (product) {
+      setServingProduct({ ...product, source: 'api' });
+      return;
+    }
+
+    // 3. Nobody has it — let the user enter it once, saved against this barcode.
+    Alert.alert('Not found', `"${data}" is not in OpenFoodFacts. Add it once and the next scan finds it instantly.`, [
+      { text: 'Add manually', onPress: () => { setManualPrefill(''); setManualBarcode(data); setManualVisible(true); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   // ── Add product to log ──────────────────────────────────────────────────────
   function handleSelectProduct(product: ProductResult) {
     setSearchResults([]);
     setQuery('');
-    setServingProduct(product);
+    setServingProduct({ ...product, source: 'api' });
   }
 
-  async function handleManualSave(product: ProductResult) {
-    setServingProduct(product);
+  function handleManualSave(product: ProductResult) {
+    setServingProduct({ ...product, source: 'manual' });
+    setManualBarcode(null);
   }
 
   async function handleConfirmServing(servingG: number) {
@@ -238,6 +278,7 @@ export default function FoodScreen() {
       carbs_g: servingProduct.nutriments.carbs_g,
       fat_g: servingProduct.nutriments.fat_g,
       cached_at: today(),
+      source: servingProduct.source,
     });
     await logFood(dateStr, foodId, servingG);
     setServingProduct(null);
@@ -306,7 +347,7 @@ export default function FoodScreen() {
                 </TouchableOpacity>
               ))}
               <TouchableOpacity style={[s.resultRow, { borderTopWidth: 1, borderTopColor: '#eee' }]}
-                onPress={() => { setSearchResults([]); setManualPrefill(query); setManualVisible(true); }}>
+                onPress={() => { setSearchResults([]); setManualPrefill(query); setManualBarcode(null); setManualVisible(true); }}>
                 <Text style={[s.resultName, { color: '#007aff' }]}>+ Add "{query}" manually</Text>
               </TouchableOpacity>
             </ScrollView>
@@ -358,6 +399,7 @@ export default function FoodScreen() {
         <ManualEntryModal
           visible={manualVisible}
           prefillName={manualPrefill}
+          barcode={manualBarcode}
           onClose={() => setManualVisible(false)}
           onSave={handleManualSave}
         />

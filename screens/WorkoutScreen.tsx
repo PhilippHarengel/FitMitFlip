@@ -64,22 +64,25 @@ export default function WorkoutScreen() {
       Alert.alert('Missing exercise', 'Enter an exercise name.');
       return;
     }
+    try {
+      let wId = activeWorkoutId;
+      if (!wId) {
+        wId = await createWorkout(dateStr);
+        setActiveWorkoutId(wId);
+      }
 
-    let wId = activeWorkoutId;
-    if (!wId) {
-      wId = await createWorkout(dateStr);
-      setActiveWorkoutId(wId);
+      const currentSets = workouts.find(w => w.id === wId)?.sets ?? [];
+      const nextSetNumber = currentSets.length + 1;
+      const kg = weightKg.trim() ? parseFloat(weightKg) : null;
+      const r = reps.trim() ? parseInt(reps, 10) : null;
+
+      await logSet(wId, nextSetNumber, exercise.trim(), kg, r);
+      setWeightKg('');
+      setReps('');
+      await load();
+    } catch (e: any) {
+      Alert.alert('Error saving set', e?.message ?? 'Unknown error');
     }
-
-    const currentSets = workouts.find(w => w.id === wId)?.sets ?? [];
-    const nextSetNumber = currentSets.length + 1;
-    const kg = weightKg.trim() ? parseFloat(weightKg) : null;
-    const r = reps.trim() ? parseInt(reps, 10) : null;
-
-    await logSet(wId, nextSetNumber, exercise.trim(), kg, r);
-    setWeightKg('');
-    setReps('');
-    await load();
   }
 
   async function handleDeleteSet(setId: number) {

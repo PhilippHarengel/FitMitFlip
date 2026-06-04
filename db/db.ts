@@ -36,6 +36,10 @@ const MIGRATIONS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date)`,
   `CREATE INDEX IF NOT EXISTS idx_food_log_date ON food_log(date)`,
+  // v2 — track where a food came from. 'manual' entries never expire from the
+  // barcode cache; 'api' entries still refresh after 30 days.
+  `ALTER TABLE foods ADD COLUMN source TEXT NOT NULL DEFAULT 'api'`,
+  `CREATE INDEX IF NOT EXISTS idx_foods_barcode ON foods(barcode)`,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;
@@ -53,13 +57,9 @@ async function migrateDb(db: SQLite.SQLiteDatabase): Promise<void> {
   );
   const currentVersion = result?.user_version ?? 0;
 
-  if (currentVersion >= MIGRATIONS.length) return;
-
-  await db.withTransactionAsync(async () => {
-    for (let i = currentVersion; i < MIGRATIONS.length; i++) {
-      await db.execAsync(MIGRATIONS[i]);
-    }
-    // user_version cannot be set via parameterized query
-    await db.execAsync(`PRAGMA user_version = ${MIGRATIONS.length}`);
-  });
+  for (let i = currentVersion; i < MIGRATIONS.length; i++) {
+    await db.execAsync(MIGRATIONS[i]);
+    // Update version after each statement so a partial run is resumable.
+    await db.execAsync(`PRAGMA user_version = ${i + 1}`);
+  }
 }
