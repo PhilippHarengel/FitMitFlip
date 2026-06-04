@@ -15,6 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import ExerciseHistoryModal from './ExerciseHistoryModal';
+import ImportScreen from './ImportScreen';
 import {
   createWorkout,
   deleteWorkout,
@@ -37,6 +38,7 @@ export default function WorkoutScreen() {
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
+  const [importVisible, setImportVisible] = useState(false);
 
   const dateStr = toDateString(date);
   const isToday = dateStr === toDateString(new Date());
@@ -165,6 +167,9 @@ export default function WorkoutScreen() {
                 <Text style={s.splitBtnSub}>{SPLITS[split].length} exercises · {SETS_PER_EXERCISE} sets each</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity style={s.importLink} onPress={() => setImportVisible(true)}>
+              <Text style={s.importLinkText}>Import past data</Text>
+            </TouchableOpacity>
           </ScrollView>
         ) : (
           // ── Templated logging ──
@@ -232,6 +237,12 @@ export default function WorkoutScreen() {
         exercise={historyExercise}
         onClose={() => setHistoryExercise(null)}
       />
+
+      <ImportScreen
+        visible={importVisible}
+        onClose={() => setImportVisible(false)}
+        onImported={() => load()}
+      />
     </SafeAreaView>
   );
 }
@@ -247,6 +258,8 @@ const s = StyleSheet.create({
   splitBtn: { backgroundColor: '#111', borderRadius: 12, padding: 18, alignItems: 'center' },
   splitBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   splitBtnSub: { color: '#bbb', fontSize: 12, marginTop: 4 },
+  importLink: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
+  importLinkText: { color: '#007aff', fontSize: 14, fontWeight: '600' },
   // logging
   splitHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   splitTitle: { fontSize: 20, fontWeight: '800', color: '#111' },

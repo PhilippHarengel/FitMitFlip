@@ -129,6 +129,30 @@ export async function logSet(
   return result.lastInsertRowId;
 }
 
+// Bulk-import parsed sessions. One workout per (date, split), reused if it
+// already exists; sets upsert by (workout_id, exercise, set_number) so a
+// re-import overwrites rather than duplicates. Returns counts for the report.
+export async function importSessions(sessions: {
+  date: string;
+  split: string;
+  exercises: { name: string; weightKg: number | null; reps: number[] }[];
+}[]): Promise<{ workouts: number; sets: number }> {
+  let workoutCount = 0;
+  let setCount = 0;
+  for (const session of sessions) {
+    const existing = await getWorkoutByDateAndName(session.date, session.split);
+    const workoutId = existing ? existing.id : await createWorkout(session.date, session.split);
+    workoutCount++;
+    for (const ex of session.exercises) {
+      for (let i = 0; i < ex.reps.length; i++) {
+        await upsertSet(workoutId, ex.name, i + 1, ex.weightKg, ex.reps[i]);
+        setCount++;
+      }
+    }
+  }
+  return { workouts: workoutCount, sets: setCount };
+}
+
 // One row per day this exercise was trained: the day's average weight and reps
 // across all its sets (AVG ignores NULL weights, so bodyweight sets don't drag
 // the average down). Ordered oldest → newest for charting progression.
