@@ -66,9 +66,6 @@ const ALIASES: Record<string, string> = {
   'backhand cable bizeps curls': 'Cable Biceps Curls (backhand)',
 };
 
-const SPLIT_BY_NORM: Record<string, string> = {};
-for (const sp of SPLIT_NAMES) SPLIT_BY_NORM[normalize(sp)] = sp;
-
 function mapExerciseName(raw: string): { name: string; mapped: boolean } {
   const n = normalize(raw);
   if (TEMPLATE_BY_NORM[n]) return { name: TEMPLATE_BY_NORM[n], mapped: true };
@@ -105,63 +102,68 @@ function parseWeight(raw: string): number | null {
 // ─── Main parser ───────────────────────────────────────────────────────────────
 
 export function parseNotes(text: string): ParseResult {
-  const lines = text.split(/\r?\n/);
   const sessions: ParsedSession[] = [];
   const warnings: string[] = [];
-  let current: ParsedSession | null = null;
   let totalSets = 0;
 
-  lines.forEach((line, idx) => {
-    const ln = idx + 1;
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  // Notes-app exports collapse spaces and wrap lines unpredictably, so flatten
+  // everything to one string. Sessions are delimited by dates, exercises by the
+  // reps+weight pattern — neither depends on the original line breaks.
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return { sessions, warnings, totalSets };
 
-    // Header? "<date>: <split>"
-    const headerMatch = trimmed.match(/^([^:]+):\s*(.+)$/);
-    if (headerMatch && parseDate(headerMatch[1]) && line.search(/\s-\s/) === -1) {
-      const date = parseDate(headerMatch[1])!;
-      const splitNorm = normalize(headerMatch[2]);
-      const split = SPLIT_BY_NORM[splitNorm];
-      if (!split) warnings.push(`Line ${ln}: unknown split "${headerMatch[2].trim()}" — imported under that name.`);
-      current = {
-        date,
-        split: split ?? headerMatch[2].trim(),
-        splitMapped: !!split,
-        exercises: [],
-      };
-      sessions.push(current);
-      return;
+  // Find each session's start by its date (colon after the date is optional).
+  const dateRe = /(\d{4}-\d{2}-\d{2}|\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4})/g;
+  const dateMatches = [...flat.matchAll(dateRe)];
+  if (dateMatches.length === 0) {
+    warnings.push('No dates found. Each session must include a date like 2026-05-01 (a colon after it is optional).');
+    return { sessions, warnings, totalSets };
+  }
+
+  // One exercise = name, then a comma-list of reps, then " - " and a weight.
+  const exRe = /([A-Za-z][A-Za-z\s\-()]*?)\s*((?:\d+\s*,\s*)*\d+)\s*,?\s*-\s*(bodyweight|body weight|bw|\d+(?:\.\d+)?\s*kg(?:\s*\/\s*\d+)?)/gi;
+
+  for (let i = 0; i < dateMatches.length; i++) {
+    const m = dateMatches[i];
+    const start = m.index!;
+    const end = i + 1 < dateMatches.length ? dateMatches[i + 1].index! : flat.length;
+    const date = parseDate(m[1]);
+    if (!date) { warnings.push(`Couldn't read date "${m[1]}" — session skipped.`); continue; }
+
+    // Text after the date, up to the next date, with an optional ":" stripped.
+    let chunk = flat.slice(start + m[0].length, end).replace(/^\s*:\s*/, '').trim();
+
+    // Split = first known split phrase; exercises = everything after it.
+    let split = 'Workout';
+    let splitMapped = false;
+    let exText = chunk;
+    let bestIdx = -1, bestLen = 0, bestName = '';
+    for (const sp of SPLIT_NAMES) {
+      const idx = chunk.toLowerCase().indexOf(sp.toLowerCase());
+      if (idx !== -1 && (bestIdx === -1 || idx < bestIdx)) { bestIdx = idx; bestLen = sp.length; bestName = sp; }
+    }
+    if (bestIdx !== -1) {
+      split = bestName; splitMapped = true; exText = chunk.slice(bestIdx + bestLen).trim();
+    } else {
+      warnings.push(`Session ${date}: couldn't identify the split (expected Upper Body / Leg Day / Full Body) — imported under "Workout".`);
     }
 
-    // Exercise line — needs an active session.
-    if (!current) {
-      warnings.push(`Line ${ln}: "${trimmed}" before any dated session header — skipped.`);
-      return;
+    const exercises: ParsedExercise[] = [];
+    let xm: RegExpExecArray | null;
+    exRe.lastIndex = 0;
+    while ((xm = exRe.exec(exText)) !== null) {
+      const rawName = xm[1].trim();
+      const reps = xm[2].split(',').map(r => r.trim()).filter(r => r !== '').map(Number).filter(n => !isNaN(n));
+      if (!rawName || reps.length === 0) continue;
+      const { name, mapped } = mapExerciseName(rawName);
+      if (!mapped) warnings.push(`Session ${date}: "${rawName}" didn't match a template exercise — imported under that name (progression won't merge with a template exercise).`);
+      exercises.push({ name, rawName, mapped, weightKg: parseWeight(xm[3]), reps });
+      totalSets += reps.length;
     }
+    if (exercises.length === 0) warnings.push(`Session ${date}: no exercises could be read.`);
 
-    // Split name/reps from weight on " - ".
-    const dashIdx = trimmed.search(/\s-\s/);
-    const left = dashIdx === -1 ? trimmed : trimmed.slice(0, dashIdx).trim();
-    const right = dashIdx === -1 ? '' : trimmed.slice(dashIdx + 3).trim();
-
-    // Left = "<name>  <reps comma list>"
-    const lm = left.match(/^(.+?)\s+([\d][\d,\s]*)$/);
-    if (!lm) {
-      warnings.push(`Line ${ln}: couldn't read "${trimmed}" — skipped.`);
-      return;
-    }
-    const rawName = lm[1].trim();
-    const reps = lm[2].split(',').map(r => r.trim()).filter(r => r !== '').map(Number).filter(n => !isNaN(n));
-    if (reps.length === 0) {
-      warnings.push(`Line ${ln}: no sets found for "${rawName}" — skipped.`);
-      return;
-    }
-    const { name, mapped } = mapExerciseName(rawName);
-    if (!mapped) warnings.push(`Line ${ln}: "${rawName}" didn't match a template exercise — imported under that name (progression won't merge with a template exercise).`);
-
-    current.exercises.push({ name, rawName, mapped, weightKg: parseWeight(right), reps });
-    totalSets += reps.length;
-  });
+    sessions.push({ date, split, splitMapped, exercises });
+  }
 
   return { sessions, warnings, totalSets };
 }
