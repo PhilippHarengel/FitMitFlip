@@ -194,6 +194,13 @@ function parseSessionBlocks(text: string): ParseResult {
 // a digit, a date, or "/".
 function splitCols(line: string): string[] {
   if (line.includes('\t')) return line.split('\t').map(c => c.trim());
+  // Pipe is the paste-proof delimiter — survives copy out of chat, never in data.
+  if (line.includes('|')) {
+    const cols = line.split('|').map(c => c.trim());
+    if (cols.length && cols[0] === '') cols.shift();
+    if (cols.length && cols[cols.length - 1] === '') cols.pop();
+    return cols;
+  }
   const parts = line.split(/\s{2,}/).map(p => p.trim()).filter(p => p !== '');
   if (parts.length <= 1) return parts;
   const isCell = (p: string) => /^[\d/]/.test(p);
