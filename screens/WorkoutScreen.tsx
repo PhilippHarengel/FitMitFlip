@@ -58,7 +58,7 @@ export default function WorkoutScreen() {
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [lastSets, setLastSets] = useState<Record<string, Cell>>({});
   const [openExercise, setOpenExercise] = useState<string | null>(null);
-  const [openSet, setOpenSet] = useState<number>(1); // which set's wheels are expanded
+  const [openSet, setOpenSet] = useState<number>(0); // which set's wheels are expanded (0 = none)
   const [done, setDoneFlag] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
   const [weeklyVisible, setWeeklyVisible] = useState(false);
@@ -285,7 +285,7 @@ export default function WorkoutScreen() {
                     <TouchableOpacity
                       style={s.exerciseToggle}
                       activeOpacity={0.6}
-                      onPress={() => { setOpenExercise(prev => (prev === exercise ? null : exercise)); setOpenSet(1); }}
+                      onPress={() => { setOpenExercise(prev => (prev === exercise ? null : exercise)); setOpenSet(0); }}
                     >
                       <Text style={s.exerciseName}>{exercise}</Text>
                       <Text style={[s.exerciseBadge, filled > 0 && s.exerciseBadgeDone]}>{filled}/{SETS_PER_EXERCISE}</Text>
