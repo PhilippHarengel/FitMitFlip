@@ -204,6 +204,29 @@ export async function getSetsForWorkout(workoutId: number): Promise<WorkoutSet[]
   );
 }
 
+// Per-set weight/reps from the most recent date this exercise was logged
+// strictly before `beforeDate` — used to show last session's numbers as input
+// placeholders. Empty object when the exercise has no prior history.
+export async function getLastSessionSets(
+  exercise: string,
+  beforeDate: string
+): Promise<Record<number, { weight_kg: number | null; reps: number | null }>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ set_number: number; weight_kg: number | null; reps: number | null }>(
+    `SELECT s.set_number, s.weight_kg, s.reps
+     FROM sets s JOIN workouts w ON s.workout_id = w.id
+     WHERE s.exercise = ?
+       AND w.date = (
+         SELECT MAX(w2.date) FROM sets s2 JOIN workouts w2 ON s2.workout_id = w2.id
+         WHERE s2.exercise = ? AND w2.date < ?
+       )`,
+    [exercise, exercise, beforeDate]
+  );
+  const out: Record<number, { weight_kg: number | null; reps: number | null }> = {};
+  for (const r of rows) out[r.set_number] = { weight_kg: r.weight_kg, reps: r.reps };
+  return out;
+}
+
 export async function logSet(
   workoutId: number,
   setNumber: number,

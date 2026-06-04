@@ -22,6 +22,7 @@ import DayAdjustModal from './DayAdjustModal';
 import {
   createWorkout,
   deleteWorkout,
+  getLastSessionSets,
   getPlannedType,
   getSetsForWorkout,
   getWorkoutByDateAndName,
@@ -44,6 +45,7 @@ export default function WorkoutScreen() {
   const [plannedType, setPlannedType] = useState<string>('Rest');
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  const [lastSets, setLastSets] = useState<Record<string, Cell>>({});
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [done, setDoneFlag] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
@@ -105,9 +107,26 @@ export default function WorkoutScreen() {
       }
       setWorkoutId(existing ? existing.id : null);
       setCells(next);
+
+      // Last-session hints: most recent prior date each exercise was logged.
+      const last: Record<string, Cell> = {};
+      for (const ex of SPLITS[planned] ?? []) {
+        const prev = await getLastSessionSets(ex, dateStr);
+        for (let setNo = 1; setNo <= SETS_PER_EXERCISE; setNo++) {
+          const v = prev[setNo];
+          if (v) {
+            last[cellKey(ex, setNo)] = {
+              weight: v.weight_kg != null ? String(v.weight_kg) : '',
+              reps: v.reps != null ? String(v.reps) : '',
+            };
+          }
+        }
+      }
+      setLastSets(last);
     } else {
       setWorkoutId(null);
       setCells({});
+      setLastSets({});
     }
   }, [dateStr]);
 
@@ -251,6 +270,7 @@ export default function WorkoutScreen() {
                   {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
                     const key = cellKey(exercise, setNo);
                     const c = cells[key] ?? { weight: '', reps: '' };
+                    const prev = lastSets[key];
                     const resting = restKey === key && restEndsAt != null;
                     const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
                     const flashing = doneFlashKey === key;
@@ -259,7 +279,8 @@ export default function WorkoutScreen() {
                         <Text style={s.setNum}>Set {setNo}</Text>
                         <TextInput
                           style={s.cellInput}
-                          placeholder="kg"
+                          placeholder={prev?.weight ? `${prev.weight} kg` : 'kg'}
+                          placeholderTextColor="#bbb"
                           value={c.weight}
                           onChangeText={t => setCell(exercise, setNo, { weight: t })}
                           onEndEditing={() => commitCell(exercise, setNo)}
@@ -267,7 +288,8 @@ export default function WorkoutScreen() {
                         />
                         <TextInput
                           style={s.cellInput}
-                          placeholder="reps"
+                          placeholder={prev?.reps ? `${prev.reps} reps` : 'reps'}
+                          placeholderTextColor="#bbb"
                           value={c.reps}
                           onChangeText={t => setCell(exercise, setNo, { reps: t })}
                           onEndEditing={() => commitCell(exercise, setNo)}
