@@ -62,6 +62,14 @@ export type DailyMacros = {
   fat_g: number;
 };
 
+// Each field is null when no goal is set for that macro.
+export type Targets = {
+  kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+};
+
 // ─── Workouts ────────────────────────────────────────────────────────────────
 
 export async function getWorkoutsForDate(date: string): Promise<Workout[]> {
@@ -224,4 +232,27 @@ export async function getDailyMacros(date: string): Promise<DailyMacros> {
     carbs_g: row?.carbs_g ?? 0,
     fat_g: row?.fat_g ?? 0,
   };
+}
+
+// ─── Targets ─────────────────────────────────────────────────────────────────
+
+export async function getTargets(): Promise<Targets> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<Targets>(
+    'SELECT kcal, protein_g, carbs_g, fat_g FROM targets WHERE id = 1'
+  );
+  return {
+    kcal: row?.kcal ?? null,
+    protein_g: row?.protein_g ?? null,
+    carbs_g: row?.carbs_g ?? null,
+    fat_g: row?.fat_g ?? null,
+  };
+}
+
+export async function setTargets(t: Targets): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE targets SET kcal=?, protein_g=?, carbs_g=?, fat_g=? WHERE id = 1`,
+    [t.kcal, t.protein_g, t.carbs_g, t.fat_g]
+  );
 }

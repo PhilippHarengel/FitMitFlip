@@ -40,6 +40,16 @@ const MIGRATIONS: string[] = [
   // barcode cache; 'api' entries still refresh after 30 days.
   `ALTER TABLE foods ADD COLUMN source TEXT NOT NULL DEFAULT 'api'`,
   `CREATE INDEX IF NOT EXISTS idx_foods_barcode ON foods(barcode)`,
+  // v3 — daily targets. Single row (id=1); NULL columns mean "no goal set"
+  // for that macro, so the home screen falls back to showing the raw total.
+  `CREATE TABLE IF NOT EXISTS targets (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    kcal REAL,
+    protein_g REAL,
+    carbs_g REAL,
+    fat_g REAL
+  )`,
+  `INSERT OR IGNORE INTO targets (id, kcal, protein_g, carbs_g, fat_g) VALUES (1, NULL, NULL, NULL, NULL)`,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;
