@@ -22,6 +22,7 @@ import DayAdjustModal from './DayAdjustModal';
 import {
   createWorkout,
   deleteWorkout,
+  deleteSetEntry,
   getLastSessionSets,
   getPlannedType,
   getSetsForWorkout,
@@ -225,6 +226,24 @@ export default function WorkoutScreen() {
     notifId.current = await scheduleRestDone(REST_SECONDS);
   }
 
+  // Trash button: un-log a confirmed set — remove the saved row, mark it not
+  // finished, reset its wheels to last session's numbers, stop its timer.
+  async function handleDeleteSet(exercise: string, setNo: number) {
+    const key = cellKey(exercise, setNo);
+    if (restKey === key) stopRest();
+    try {
+      if (workoutId != null) await deleteSetEntry(workoutId, exercise, setNo);
+    } catch (e: any) {
+      Alert.alert('Error deleting set', e?.message ?? 'Unknown error');
+      return;
+    }
+    setCommitted(prev => { const n = new Set(prev); n.delete(key); return n; });
+    setCells(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setDoneFlashKey(prev => (prev === key ? null : prev));
+    setDoneFlag(await isDone(dateStr));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }
+
   async function toggleDone() {
     const next = !done;
     setDoneFlag(next);
@@ -310,6 +329,7 @@ export default function WorkoutScreen() {
                     const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
                     const flashing = doneFlashKey === key;
                     const setOpen = openSet === setNo;
+                    const isCommitted = committed.has(key);
                     const summary = repsOnly ? `${sel.reps} reps` : `${sel.weight} kg × ${sel.reps}`;
                     return (
                       <View key={setNo} style={s.setBlock}>
@@ -323,6 +343,11 @@ export default function WorkoutScreen() {
                             <Text style={s.setSummary}>{summary}</Text>
                             <Text style={s.chevron}>{setOpen ? '▾' : '▸'}</Text>
                           </TouchableOpacity>
+                          {isCommitted && (
+                            <TouchableOpacity style={s.deleteBtn} onPress={() => handleDeleteSet(exercise, setNo)} activeOpacity={0.7}>
+                              <Ionicons name="trash-outline" size={18} color="#e00" />
+                            </TouchableOpacity>
+                          )}
                           {resting ? (
                             <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
                               <Text style={s.restCountdown}>
@@ -446,6 +471,7 @@ const s = StyleSheet.create({
   wheelCap: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   wheel: { width: '100%', height: 132 },
   wheelItem: { fontSize: 20, height: 132 },
+  deleteBtn: { width: 44, height: 38, borderRadius: 8, borderWidth: 1, borderColor: '#f1c0c0', alignItems: 'center', justifyContent: 'center' },
   confirmBtn: { width: 56, height: 38, borderRadius: 8, backgroundColor: '#1a9e54', alignItems: 'center', justifyContent: 'center' },
   restBtn: { backgroundColor: '#222' },
   restCountdown: { color: '#fff', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },

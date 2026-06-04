@@ -329,6 +329,19 @@ export async function deleteSet(id: number): Promise<void> {
   await db.runAsync('DELETE FROM sets WHERE id = ?', [id]);
 }
 
+// Delete a single logged set by its natural key (used by the per-set undo).
+export async function deleteSetEntry(
+  workoutId: number,
+  exercise: string,
+  setNumber: number
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'DELETE FROM sets WHERE workout_id = ? AND exercise = ? AND set_number = ?',
+    [workoutId, exercise, setNumber]
+  );
+}
+
 // ─── Foods ───────────────────────────────────────────────────────────────────
 
 // Returns a cached food for this barcode. Manual entries (the user's own data)
