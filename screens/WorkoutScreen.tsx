@@ -15,7 +15,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import ExerciseHistoryModal from './ExerciseHistoryModal';
-import ImportScreen from './ImportScreen';
 import WeeklyPlanModal from './WeeklyPlanModal';
 import DayAdjustModal from './DayAdjustModal';
 import {
@@ -44,7 +43,6 @@ export default function WorkoutScreen() {
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [done, setDoneFlag] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
-  const [importVisible, setImportVisible] = useState(false);
   const [weeklyVisible, setWeeklyVisible] = useState(false);
   const [adjustVisible, setAdjustVisible] = useState(false);
 
@@ -233,9 +231,6 @@ export default function WorkoutScreen() {
                 <Text style={s.clearText}>Clear logged sets</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={s.importLink} onPress={() => setImportVisible(true)}>
-              <Text style={s.importLinkText}>Import past data</Text>
-            </TouchableOpacity>
           </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={s.scroll}>
@@ -253,15 +248,11 @@ export default function WorkoutScreen() {
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity style={s.importLink} onPress={() => setImportVisible(true)}>
-              <Text style={s.importLinkText}>Import past data</Text>
-            </TouchableOpacity>
           </ScrollView>
         )}
       </KeyboardAvoidingView>
 
       <ExerciseHistoryModal exercise={historyExercise} onClose={() => setHistoryExercise(null)} />
-      <ImportScreen visible={importVisible} onClose={() => setImportVisible(false)} onImported={() => load()} />
       <WeeklyPlanModal visible={weeklyVisible} onClose={() => setWeeklyVisible(false)} onChanged={() => load()} />
       <DayAdjustModal
         date={adjustVisible ? dateStr : null}
@@ -301,8 +292,6 @@ const s = StyleSheet.create({
   doneTextOn: { color: '#fff' },
   clearLink: { alignItems: 'center', paddingVertical: 8 },
   clearText: { fontSize: 13, color: '#e00' },
-  importLink: { alignItems: 'center', paddingVertical: 10 },
-  importLinkText: { color: '#007aff', fontSize: 14, fontWeight: '600' },
   restCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 28, alignItems: 'center' },
   restEmoji: { fontSize: 40 },
   restTitle: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 8 },
