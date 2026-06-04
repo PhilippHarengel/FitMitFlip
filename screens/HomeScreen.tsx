@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
+import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
   getFoodLogForDate,
@@ -39,6 +40,7 @@ export default function HomeScreen() {
   const [foodCount, setFoodCount] = useState(0);
   const [goalsVisible, setGoalsVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   const dateStr = toDateString(date);
 
@@ -64,6 +66,18 @@ export default function HomeScreen() {
     await setTargets(t);
     setTargetsState(t);
     setGoalsVisible(false);
+  }
+
+  async function handleBackup() {
+    setBackingUp(true);
+    try {
+      const r = await backupToFile();
+      if (!r.shared) Alert.alert('Backup saved', `Saved on-device as ${r.name}. Sharing wasn't available to send it off the device.`);
+    } catch (e: any) {
+      Alert.alert('Backup failed', e?.message ?? 'Unknown error');
+    } finally {
+      setBackingUp(false);
+    }
   }
 
   const isToday = dateStr === toDateString(new Date());
@@ -130,6 +144,11 @@ export default function HomeScreen() {
             ))
           )}
         </View>
+
+        {/* Backup */}
+        <TouchableOpacity style={s.backupBtn} onPress={handleBackup} disabled={backingUp}>
+          <Text style={s.backupText}>{backingUp ? 'Preparing backup…' : 'Back up data'}</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <NutrientDetailModal
@@ -343,6 +362,8 @@ const s = StyleSheet.create({
   workoutBlock: { marginBottom: 12 },
   workoutName: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 4 },
   setLine: { fontSize: 14, color: '#555', paddingVertical: 2 },
+  backupBtn: { alignItems: 'center', paddingVertical: 12 },
+  backupText: { fontSize: 14, color: '#007aff', fontWeight: '600' },
   // modal
   modalSafe: { flex: 1, backgroundColor: '#fff' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ddd' },

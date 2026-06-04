@@ -25,6 +25,23 @@ export function dowOf(dateStr: string): number {
   return new Date(y, m - 1, d).getDay();
 }
 
+// ─── Backup ──────────────────────────────────────────────────────────────────
+
+// Full lossless dump of every table → JSON string, ready to write to a file.
+// schema_version lets a future restore know which migration shape it is.
+export async function exportAllData(): Promise<string> {
+  const db = await getDb();
+  const tables = ['workouts', 'sets', 'foods', 'food_log', 'targets', 'schedule', 'schedule_overrides', 'completions'];
+  const out: Record<string, unknown[]> = {};
+  for (const t of tables) out[t] = await db.getAllAsync(`SELECT * FROM ${t}`);
+  const pragma = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  return JSON.stringify(
+    { app: 'FitMitFlip', schema_version: pragma?.user_version ?? null, exported_at: new Date().toISOString(), tables: out },
+    null,
+    2
+  );
+}
+
 // ─── Weekly schedule ─────────────────────────────────────────────────────────
 
 export async function getScheduleBase(): Promise<Record<number, string>> {
