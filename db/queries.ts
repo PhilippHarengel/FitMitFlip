@@ -129,6 +129,33 @@ export async function logSet(
   return result.lastInsertRowId;
 }
 
+// One row per day this exercise was trained: the day's average weight and reps
+// across all its sets (AVG ignores NULL weights, so bodyweight sets don't drag
+// the average down). Ordered oldest → newest for charting progression.
+export type ExerciseDay = {
+  date: string;
+  avg_weight: number | null;
+  avg_reps: number | null;
+  set_count: number;
+};
+
+export async function getExerciseHistory(exercise: string): Promise<ExerciseDay[]> {
+  const db = await getDb();
+  return db.getAllAsync<ExerciseDay>(
+    `SELECT w.date AS date,
+            AVG(s.weight_kg) AS avg_weight,
+            AVG(s.reps)      AS avg_reps,
+            COUNT(*)         AS set_count
+     FROM sets s
+     JOIN workouts w ON s.workout_id = w.id
+     WHERE s.exercise = ?
+       AND (s.weight_kg IS NOT NULL OR s.reps IS NOT NULL)
+     GROUP BY w.date
+     ORDER BY w.date ASC`,
+    [exercise]
+  );
+}
+
 // Insert or update a set keyed on (workout_id, exercise, set_number) so editing
 // a templated set never creates duplicate rows. A null weight+reps clears the set.
 export async function upsertSet(

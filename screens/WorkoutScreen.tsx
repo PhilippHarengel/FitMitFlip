@@ -12,7 +12,9 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import ExerciseHistoryModal from './ExerciseHistoryModal';
 import {
   createWorkout,
   deleteWorkout,
@@ -34,6 +36,7 @@ export default function WorkoutScreen() {
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [openExercise, setOpenExercise] = useState<string | null>(null);
+  const [historyExercise, setHistoryExercise] = useState<string | null>(null);
 
   const dateStr = toDateString(date);
   const isToday = dateStr === toDateString(new Date());
@@ -179,17 +182,20 @@ export default function WorkoutScreen() {
               const done = filledCount(exercise);
               return (
                 <View key={exercise} style={s.exerciseCard}>
-                  <TouchableOpacity
-                    style={s.exerciseHeader}
-                    activeOpacity={0.6}
-                    onPress={() => setOpenExercise(prev => (prev === exercise ? null : exercise))}
-                  >
-                    <Text style={s.exerciseName}>{exercise}</Text>
-                    <View style={s.exerciseMeta}>
+                  <View style={s.exerciseHeader}>
+                    <TouchableOpacity
+                      style={s.exerciseToggle}
+                      activeOpacity={0.6}
+                      onPress={() => setOpenExercise(prev => (prev === exercise ? null : exercise))}
+                    >
+                      <Text style={s.exerciseName}>{exercise}</Text>
                       <Text style={[s.exerciseBadge, done > 0 && s.exerciseBadgeDone]}>{done}/{SETS_PER_EXERCISE}</Text>
                       <Text style={s.chevron}>{isOpen ? '▾' : '▸'}</Text>
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.historyBtn} onPress={() => setHistoryExercise(exercise)}>
+                      <Ionicons name="stats-chart-outline" size={18} color="#007aff" />
+                    </TouchableOpacity>
+                  </View>
 
                   {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
                     const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
@@ -221,6 +227,11 @@ export default function WorkoutScreen() {
           </ScrollView>
         )}
       </KeyboardAvoidingView>
+
+      <ExerciseHistoryModal
+        exercise={historyExercise}
+        onClose={() => setHistoryExercise(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -243,9 +254,10 @@ const s = StyleSheet.create({
   changeBtn: { fontSize: 14, color: '#007aff', fontWeight: '600' },
   deleteBtn: { fontSize: 14, color: '#e00' },
   exerciseCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14 },
-  exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center' },
+  exerciseToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   exerciseName: { fontSize: 15, fontWeight: '600', color: '#222', flex: 1 },
-  exerciseMeta: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  historyBtn: { paddingLeft: 14, paddingVertical: 2 },
   exerciseBadge: { fontSize: 12, fontWeight: '600', color: '#bbb' },
   exerciseBadgeDone: { color: '#111' },
   chevron: { fontSize: 14, color: '#999', width: 14, textAlign: 'center' },
