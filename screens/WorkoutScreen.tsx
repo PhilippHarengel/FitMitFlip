@@ -33,6 +33,7 @@ export default function WorkoutScreen() {
   const [activeSplit, setActiveSplit] = useState<string | null>(null);
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});
+  const [openExercise, setOpenExercise] = useState<string | null>(null);
 
   const dateStr = toDateString(date);
   const isToday = dateStr === toDateString(new Date());
@@ -66,6 +67,17 @@ export default function WorkoutScreen() {
     setActiveSplit(split);
     setWorkoutId(id);
     setCells(next);
+    setOpenExercise(null);   // land on the collapsed exercise list
+  }
+
+  // How many of an exercise's sets have any data entered (for the header badge).
+  function filledCount(exercise: string): number {
+    let n = 0;
+    for (let setNo = 1; setNo <= SETS_PER_EXERCISE; setNo++) {
+      const c = cells[cellKey(exercise, setNo)];
+      if (c && (c.weight.trim() || c.reps.trim())) n++;
+    }
+    return n;
   }
 
   async function handlePickSplit(split: string) {
@@ -162,35 +174,50 @@ export default function WorkoutScreen() {
               </View>
             </View>
 
-            {SPLITS[activeSplit].map(exercise => (
-              <View key={exercise} style={s.exerciseCard}>
-                <Text style={s.exerciseName}>{exercise}</Text>
-                {Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
-                  const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
-                  return (
-                    <View key={setNo} style={s.setRow}>
-                      <Text style={s.setNum}>Set {setNo}</Text>
-                      <TextInput
-                        style={s.cellInput}
-                        placeholder="kg"
-                        value={c.weight}
-                        onChangeText={t => setCell(exercise, setNo, { weight: t })}
-                        onEndEditing={() => commitCell(exercise, setNo)}
-                        keyboardType="decimal-pad"
-                      />
-                      <TextInput
-                        style={s.cellInput}
-                        placeholder="reps"
-                        value={c.reps}
-                        onChangeText={t => setCell(exercise, setNo, { reps: t })}
-                        onEndEditing={() => commitCell(exercise, setNo)}
-                        keyboardType="number-pad"
-                      />
+            {SPLITS[activeSplit].map(exercise => {
+              const isOpen = openExercise === exercise;
+              const done = filledCount(exercise);
+              return (
+                <View key={exercise} style={s.exerciseCard}>
+                  <TouchableOpacity
+                    style={s.exerciseHeader}
+                    activeOpacity={0.6}
+                    onPress={() => setOpenExercise(prev => (prev === exercise ? null : exercise))}
+                  >
+                    <Text style={s.exerciseName}>{exercise}</Text>
+                    <View style={s.exerciseMeta}>
+                      <Text style={[s.exerciseBadge, done > 0 && s.exerciseBadgeDone]}>{done}/{SETS_PER_EXERCISE}</Text>
+                      <Text style={s.chevron}>{isOpen ? '▾' : '▸'}</Text>
                     </View>
-                  );
-                })}
-              </View>
-            ))}
+                  </TouchableOpacity>
+
+                  {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
+                    const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
+                    return (
+                      <View key={setNo} style={s.setRow}>
+                        <Text style={s.setNum}>Set {setNo}</Text>
+                        <TextInput
+                          style={s.cellInput}
+                          placeholder="kg"
+                          value={c.weight}
+                          onChangeText={t => setCell(exercise, setNo, { weight: t })}
+                          onEndEditing={() => commitCell(exercise, setNo)}
+                          keyboardType="decimal-pad"
+                        />
+                        <TextInput
+                          style={s.cellInput}
+                          placeholder="reps"
+                          value={c.reps}
+                          onChangeText={t => setCell(exercise, setNo, { reps: t })}
+                          onEndEditing={() => commitCell(exercise, setNo)}
+                          keyboardType="number-pad"
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -216,8 +243,13 @@ const s = StyleSheet.create({
   changeBtn: { fontSize: 14, color: '#007aff', fontWeight: '600' },
   deleteBtn: { fontSize: 14, color: '#e00' },
   exerciseCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14 },
-  exerciseName: { fontSize: 15, fontWeight: '600', color: '#222', marginBottom: 8 },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exerciseName: { fontSize: 15, fontWeight: '600', color: '#222', flex: 1 },
+  exerciseMeta: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  exerciseBadge: { fontSize: 12, fontWeight: '600', color: '#bbb' },
+  exerciseBadgeDone: { color: '#111' },
+  chevron: { fontSize: 14, color: '#999', width: 14, textAlign: 'center' },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, marginTop: 8 },
   setNum: { width: 48, fontSize: 13, color: '#999', fontWeight: '600' },
   cellInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, fontSize: 15, textAlign: 'center' },
 });
