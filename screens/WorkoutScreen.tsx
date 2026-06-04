@@ -57,6 +57,7 @@ export default function WorkoutScreen() {
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [lastSets, setLastSets] = useState<Record<string, Cell>>({});
+  const [committed, setCommitted] = useState<Set<string>>(new Set()); // sets saved via ✓ / loaded from DB
   const [openExercise, setOpenExercise] = useState<string | null>(null);
   const [openSet, setOpenSet] = useState<number>(0); // which set's wheels are expanded (0 = none)
   const [done, setDoneFlag] = useState(false);
@@ -108,17 +109,21 @@ export default function WorkoutScreen() {
     if (isStrengthSplit(planned)) {
       const existing = await getWorkoutByDateAndName(dateStr, planned);
       const next: Record<string, Cell> = {};
+      const saved = new Set<string>();
       if (existing) {
         const sets = await getSetsForWorkout(existing.id);
         for (const s of sets) {
-          next[cellKey(s.exercise, s.set_number)] = {
+          const k = cellKey(s.exercise, s.set_number);
+          next[k] = {
             weight: s.weight_kg != null ? String(s.weight_kg) : '',
             reps: s.reps != null ? String(s.reps) : '',
           };
+          saved.add(k);
         }
       }
       setWorkoutId(existing ? existing.id : null);
       setCells(next);
+      setCommitted(saved);
 
       // Last-session hints: most recent prior date each exercise was logged.
       const last: Record<string, Cell> = {};
@@ -139,6 +144,7 @@ export default function WorkoutScreen() {
       setWorkoutId(null);
       setCells({});
       setLastSets({});
+      setCommitted(new Set());
     }
   }, [dateStr]);
 
@@ -147,8 +153,7 @@ export default function WorkoutScreen() {
   function filledCount(exercise: string): number {
     let n = 0;
     for (let setNo = 1; setNo <= SETS_PER_EXERCISE; setNo++) {
-      const c = cells[cellKey(exercise, setNo)];
-      if (c && (c.weight.trim() || c.reps.trim())) n++;
+      if (committed.has(cellKey(exercise, setNo))) n++;
     }
     return n;
   }
@@ -193,6 +198,7 @@ export default function WorkoutScreen() {
     try {
       const id = await ensureWorkout();
       await upsertSet(id, exercise, setNo, weight, reps);
+      setCommitted(prev => new Set(prev).add(cellKey(exercise, setNo)));
       setDoneFlag(await isDone(dateStr));   // auto-done may have flipped
     } catch (e: any) {
       Alert.alert('Error saving set', e?.message ?? 'Unknown error');
