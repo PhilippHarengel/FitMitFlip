@@ -7,11 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { scheduleRestDone, cancelRest } from '../lib/restNotify';
@@ -31,7 +31,18 @@ import {
   toDateString,
   upsertSet,
 } from '../db/queries';
-import { SPLITS, SETS_PER_EXERCISE, isStrengthSplit } from '../db/workoutTemplates';
+import {
+  SPLITS,
+  SETS_PER_EXERCISE,
+  isStrengthSplit,
+  isRepsOnly,
+  WEIGHT_OPTIONS,
+  REPS_OPTIONS,
+  DEFAULT_WEIGHT,
+  DEFAULT_REPS,
+  snapWeight,
+  snapReps,
+} from '../db/workoutTemplates';
 
 type Cell = { weight: string; reps: string };
 const cellKey = (exercise: string, setNo: number) => `${exercise}@@${setNo}`;
@@ -157,13 +168,30 @@ export default function WorkoutScreen() {
     return id;
   }
 
+  // What the wheels currently show for a set: live wheel selection (cells) →
+  // last session (snapped to the grid) → sensible default. Reps-only exercises
+  // have no weight. This is both the Picker's selectedValue and what ✓ saves.
+  function resolveCell(exercise: string, setNo: number): { weight: number | null; reps: number } {
+    const key = cellKey(exercise, setNo);
+    const c = cells[key];
+    const last = lastSets[key];
+    const wStr = c?.weight.trim() ? c.weight : last?.weight.trim() ? last.weight : '';
+    const rStr = c?.reps.trim() ? c.reps : last?.reps.trim() ? last.reps : '';
+    const weight = isRepsOnly(exercise)
+      ? null
+      : snapWeight(wStr ? parseFloat(wStr) : DEFAULT_WEIGHT);
+    const reps = snapReps(rStr ? parseInt(rStr, 10) : DEFAULT_REPS);
+    return { weight, reps };
+  }
+
+  // Save a set with the values its wheels currently show, and mirror them into
+  // local state so the X/3 badge and auto-done stay in sync.
   async function commitCell(exercise: string, setNo: number) {
-    const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
-    const w = c.weight.trim() ? parseFloat(c.weight) : null;
-    const r = c.reps.trim() ? parseInt(c.reps, 10) : null;
+    const { weight, reps } = resolveCell(exercise, setNo);
+    setCell(exercise, setNo, { weight: weight != null ? String(weight) : '', reps: String(reps) });
     try {
       const id = await ensureWorkout();
-      await upsertSet(id, exercise, setNo, isFinite(w as number) ? w : null, isFinite(r as number) ? r : null);
+      await upsertSet(id, exercise, setNo, weight, reps);
       setDoneFlag(await isDone(dateStr));   // auto-done may have flipped
     } catch (e: any) {
       Alert.alert('Error saving set', e?.message ?? 'Unknown error');
@@ -269,47 +297,57 @@ export default function WorkoutScreen() {
 
                   {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
                     const key = cellKey(exercise, setNo);
-                    const c = cells[key] ?? { weight: '', reps: '' };
-                    const prev = lastSets[key];
+                    const repsOnly = isRepsOnly(exercise);
+                    const sel = resolveCell(exercise, setNo);
                     const resting = restKey === key && restEndsAt != null;
                     const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
                     const flashing = doneFlashKey === key;
                     return (
-                      <View key={setNo} style={s.setRow}>
-                        <Text style={s.setNum}>Set {setNo}</Text>
-                        <TextInput
-                          style={s.cellInput}
-                          placeholder={prev?.weight ? `${prev.weight} kg` : 'kg'}
-                          placeholderTextColor="#bbb"
-                          value={c.weight}
-                          onChangeText={t => setCell(exercise, setNo, { weight: t })}
-                          onEndEditing={() => commitCell(exercise, setNo)}
-                          keyboardType="decimal-pad"
-                        />
-                        <TextInput
-                          style={s.cellInput}
-                          placeholder={prev?.reps ? `${prev.reps} reps` : 'reps'}
-                          placeholderTextColor="#bbb"
-                          value={c.reps}
-                          onChangeText={t => setCell(exercise, setNo, { reps: t })}
-                          onEndEditing={() => commitCell(exercise, setNo)}
-                          keyboardType="number-pad"
-                        />
-                        {resting ? (
-                          <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
-                            <Text style={s.restCountdown}>
-                              {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
-                            </Text>
-                          </TouchableOpacity>
-                        ) : flashing ? (
-                          <View style={[s.confirmBtn, s.goBtn]}>
-                            <Text style={s.goText}>Go!</Text>
+                      <View key={setNo} style={s.setBlock}>
+                        <View style={s.setHeader}>
+                          <Text style={s.setNum}>Set {setNo}</Text>
+                          {resting ? (
+                            <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
+                              <Text style={s.restCountdown}>
+                                {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                              </Text>
+                            </TouchableOpacity>
+                          ) : flashing ? (
+                            <View style={[s.confirmBtn, s.goBtn]}>
+                              <Text style={s.goText}>Go!</Text>
+                            </View>
+                          ) : (
+                            <TouchableOpacity style={s.confirmBtn} onPress={() => handleConfirmSet(exercise, setNo)} activeOpacity={0.7}>
+                              <Ionicons name="checkmark" size={22} color="#fff" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <View style={s.wheelRow}>
+                          {!repsOnly && (
+                            <View style={s.wheelCol}>
+                              <Text style={s.wheelCap}>kg</Text>
+                              <Picker
+                                selectedValue={sel.weight as number}
+                                onValueChange={v => setCell(exercise, setNo, { weight: String(v) })}
+                                style={s.wheel}
+                                itemStyle={s.wheelItem}
+                              >
+                                {WEIGHT_OPTIONS.map(w => <Picker.Item key={w} label={String(w)} value={w} />)}
+                              </Picker>
+                            </View>
+                          )}
+                          <View style={s.wheelCol}>
+                            <Text style={s.wheelCap}>reps</Text>
+                            <Picker
+                              selectedValue={sel.reps}
+                              onValueChange={v => setCell(exercise, setNo, { reps: String(v) })}
+                              style={s.wheel}
+                              itemStyle={s.wheelItem}
+                            >
+                              {REPS_OPTIONS.map(r => <Picker.Item key={r} label={String(r)} value={r} />)}
+                            </Picker>
                           </View>
-                        ) : (
-                          <TouchableOpacity style={s.confirmBtn} onPress={() => handleConfirmSet(exercise, setNo)} activeOpacity={0.7}>
-                            <Ionicons name="checkmark" size={22} color="#fff" />
-                          </TouchableOpacity>
-                        )}
+                        </View>
                       </View>
                     );
                   })}
@@ -379,9 +417,14 @@ const s = StyleSheet.create({
   exerciseBadge: { fontSize: 12, fontWeight: '600', color: '#bbb' },
   exerciseBadgeDone: { color: '#111' },
   chevron: { fontSize: 14, color: '#999', width: 14, textAlign: 'center' },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, marginTop: 8 },
-  setNum: { width: 48, fontSize: 13, color: '#999', fontWeight: '600' },
-  cellInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, fontSize: 15, textAlign: 'center' },
+  setBlock: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e8e8e8', paddingTop: 6 },
+  setHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  setNum: { fontSize: 13, color: '#999', fontWeight: '600' },
+  wheelRow: { flexDirection: 'row', gap: 12 },
+  wheelCol: { flex: 1, alignItems: 'center' },
+  wheelCap: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  wheel: { width: '100%', height: 132 },
+  wheelItem: { fontSize: 20, height: 132 },
   confirmBtn: { width: 56, height: 38, borderRadius: 8, backgroundColor: '#1a9e54', alignItems: 'center', justifyContent: 'center' },
   restBtn: { backgroundColor: '#222' },
   restCountdown: { color: '#fff', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
