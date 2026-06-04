@@ -50,6 +50,14 @@ const MIGRATIONS: string[] = [
     fat_g REAL
   )`,
   `INSERT OR IGNORE INTO targets (id, kcal, protein_g, carbs_g, fat_g) VALUES (1, NULL, NULL, NULL, NULL)`,
+  // v4 — weekly training plan. schedule = recurring base keyed by JS getDay()
+  // (0=Sun … 6=Sat). schedule_overrides = this-week shifts keyed by date (expire
+  // naturally). completions = manual done override per date (absent = auto from sets).
+  `CREATE TABLE IF NOT EXISTS schedule (dow INTEGER PRIMARY KEY, type TEXT NOT NULL)`,
+  `INSERT OR IGNORE INTO schedule (dow, type) VALUES
+     (1,'Upper Body'),(2,'Leg Day'),(3,'Rest'),(4,'Rest'),(5,'Full Body'),(6,'Rest'),(0,'Jogging')`,
+  `CREATE TABLE IF NOT EXISTS schedule_overrides (date TEXT PRIMARY KEY, type TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS completions (date TEXT PRIMARY KEY, done INTEGER NOT NULL)`,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;

@@ -19,6 +19,79 @@ export function toDateString(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Day-of-week index (0=Sun … 6=Sat) for a 'YYYY-MM-DD' string, local time. */
+export function dowOf(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+// ─── Weekly schedule ─────────────────────────────────────────────────────────
+
+export async function getScheduleBase(): Promise<Record<number, string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ dow: number; type: string }>('SELECT dow, type FROM schedule');
+  const out: Record<number, string> = {};
+  for (const r of rows) out[r.dow] = r.type;
+  return out;
+}
+
+export async function setScheduleDay(dow: number, type: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO schedule (dow, type) VALUES (?, ?) ON CONFLICT(dow) DO UPDATE SET type = excluded.type',
+    [dow, type]
+  );
+}
+
+export async function setOverride(date: string, type: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO schedule_overrides (date, type) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET type = excluded.type',
+    [date, type]
+  );
+}
+
+export async function clearOverride(date: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM schedule_overrides WHERE date = ?', [date]);
+}
+
+// Resolved planned type for a date: this-week override wins, else the base plan.
+export async function getPlannedType(date: string): Promise<string> {
+  const db = await getDb();
+  const ov = await db.getFirstAsync<{ type: string }>('SELECT type FROM schedule_overrides WHERE date = ?', [date]);
+  if (ov) return ov.type;
+  const base = await db.getFirstAsync<{ type: string }>('SELECT type FROM schedule WHERE dow = ?', [dowOf(date)]);
+  return base?.type ?? 'Rest';
+}
+
+// ─── Completion (auto from sets, with manual override) ───────────────────────
+
+async function hasLoggedSets(date: string): Promise<boolean> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM sets s JOIN workouts w ON s.workout_id = w.id WHERE w.date = ?',
+    [date]
+  );
+  return (row?.n ?? 0) > 0;
+}
+
+// Effective done = manual completion row if present, else auto (any sets logged).
+export async function isDone(date: string): Promise<boolean> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ done: number }>('SELECT done FROM completions WHERE date = ?', [date]);
+  if (row) return row.done === 1;
+  return hasLoggedSets(date);
+}
+
+export async function setDone(date: string, done: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO completions (date, done) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET done = excluded.done',
+    [date, done ? 1 : 0]
+  );
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type Workout = {

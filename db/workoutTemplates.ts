@@ -32,6 +32,10 @@ export const SPLITS: Record<string, string[]> = {
 export type SplitName = keyof typeof SPLITS;
 export const SPLIT_NAMES = Object.keys(SPLITS);
 
+// All schedulable day types: the three loggable splits plus cardio and rest.
+export const WORKOUT_TYPES = [...SPLIT_NAMES, 'Jogging', 'Rest'];
+export const isStrengthSplit = (type: string) => SPLIT_NAMES.includes(type);
+
 // Exercises tracked by reps, not weight (bodyweight/max-rep movements).
 // Their progression chart always plots reps even if a weight was entered.
 export const REPS_ONLY = new Set<string>(['Pull-ups (max reps)']);
