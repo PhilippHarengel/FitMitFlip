@@ -135,7 +135,7 @@ export async function logSet(
 export async function importSessions(sessions: {
   date: string;
   split: string;
-  exercises: { name: string; weightKg: number | null; reps: number[] }[];
+  exercises: { name: string; sets: { reps: number; weightKg: number | null }[] }[];
 }[]): Promise<{ workouts: number; sets: number }> {
   let workoutCount = 0;
   let setCount = 0;
@@ -144,8 +144,8 @@ export async function importSessions(sessions: {
     const workoutId = existing ? existing.id : await createWorkout(session.date, session.split);
     workoutCount++;
     for (const ex of session.exercises) {
-      for (let i = 0; i < ex.reps.length; i++) {
-        await upsertSet(workoutId, ex.name, i + 1, ex.weightKg, ex.reps[i]);
+      for (let i = 0; i < ex.sets.length; i++) {
+        await upsertSet(workoutId, ex.name, i + 1, ex.sets[i].weightKg, ex.sets[i].reps);
         setCount++;
       }
     }

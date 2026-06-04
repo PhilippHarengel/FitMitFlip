@@ -12,8 +12,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { parseNotes, type ParseResult } from '../db/importNotes';
+import { parseNotes, type ParseResult, type ParsedSet } from '../db/importNotes';
 import { importSessions } from '../db/queries';
+
+// Compact set summary: "12, 12, 12 @ 55kg" when one weight, else "20@120, 16@180".
+function formatSets(sets: ParsedSet[]): string {
+  const weights = new Set(sets.map(s => s.weightKg));
+  if (weights.size === 1) {
+    const w = sets[0].weightKg;
+    return `${sets.map(s => s.reps).join(', ')}${w != null ? ` @ ${w}kg` : ' (bodyweight)'}`;
+  }
+  return sets.map(s => `${s.reps}@${s.weightKg != null ? s.weightKg + 'kg' : 'bw'}`).join(', ');
+}
 
 const PLACEHOLDER = `2026-05-01: upper body
 pull ups   8, 8, 6 - bodyweight
@@ -103,7 +113,7 @@ export default function ImportScreen({ visible, onClose, onImported }: {
                     </Text>
                     {sess.exercises.map((ex, j) => (
                       <Text key={j} style={s.exLine}>
-                        {ex.mapped ? '' : '⚠ '}{ex.name} — {ex.reps.join(', ')}{ex.weightKg != null ? ` @ ${ex.weightKg}kg` : ' (bodyweight)'}
+                        {ex.mapped ? '' : '⚠ '}{ex.name} — {formatSets(ex.sets)}
                       </Text>
                     ))}
                   </View>
