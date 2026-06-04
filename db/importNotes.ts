@@ -188,11 +188,26 @@ function parseSessionBlocks(text: string): ParseResult {
 
 // ─── Format B: transposed table ──────────────────────────────────────────────────
 
+// Split a table row into columns. Prefer tabs; if the paste lost them, fall back
+// to 2+ spaces — but rejoin leading non-cell tokens so multi-word names survive
+// (e.g. "standing calve  raises" → one name, not two columns). A cell starts with
+// a digit, a date, or "/".
+function splitCols(line: string): string[] {
+  if (line.includes('\t')) return line.split('\t').map(c => c.trim());
+  const parts = line.split(/\s{2,}/).map(p => p.trim()).filter(p => p !== '');
+  if (parts.length <= 1) return parts;
+  const isCell = (p: string) => /^[\d/]/.test(p);
+  let name = parts[0];
+  let i = 1;
+  while (i < parts.length && !isCell(parts[i])) { name += ' ' + parts[i]; i++; }
+  return [name, ...parts.slice(i)];
+}
+
 function parseTransposed(text: string): ParseResult {
   const warnings: string[] = [];
   let totalSets = 0;
   const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-  const header = lines[0].split('\t');
+  const header = splitCols(lines[0]);
 
   if (header.length < 2) {
     warnings.push('Detected a multi-date header but columns are not tab-separated. Keep the table columns (tabs) when pasting.');
@@ -210,7 +225,7 @@ function parseTransposed(text: string): ParseResult {
   });
 
   for (let r = 1; r < lines.length; r++) {
-    const cells = lines[r].split('\t');
+    const cells = splitCols(lines[r]);
     const rawName = cells[0]?.trim();
     if (!rawName) continue;
     const { name, mapped } = mapExerciseName(rawName);
