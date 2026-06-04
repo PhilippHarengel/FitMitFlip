@@ -15,95 +15,102 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   createWorkout,
-  deleteSet,
   deleteWorkout,
   getSetsForWorkout,
-  getWorkoutsForDate,
-  logSet,
+  getWorkoutByDateAndName,
   toDateString,
-  type Workout,
-  type WorkoutSet,
+  upsertSet,
 } from '../db/queries';
+import { SPLITS, SPLIT_NAMES, SETS_PER_EXERCISE } from '../db/workoutTemplates';
 
-type WorkoutWithSets = Workout & { sets: WorkoutSet[] };
+// Local input state, keyed per (exercise, set number).
+type Cell = { weight: string; reps: string };
+const cellKey = (exercise: string, setNo: number) => `${exercise}@@${setNo}`;
 
 export default function WorkoutScreen() {
   const [date, setDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
-  const [workouts, setWorkouts] = useState<WorkoutWithSets[]>([]);
-
-  // New set form
-  const [exercise, setExercise] = useState('');
-  const [weightKg, setWeightKg] = useState('');
-  const [reps, setReps] = useState('');
-  const [activeWorkoutId, setActiveWorkoutId] = useState<number | null>(null);
+  const [activeSplit, setActiveSplit] = useState<string | null>(null);
+  const [workoutId, setWorkoutId] = useState<number | null>(null);
+  const [cells, setCells] = useState<Record<string, Cell>>({});
 
   const dateStr = toDateString(date);
+  const isToday = dateStr === toDateString(new Date());
 
+  // Load: find whichever split was already started for this date (if any).
   const load = useCallback(async () => {
-    const ws = await getWorkoutsForDate(dateStr);
-    const withSets = await Promise.all(
-      ws.map(async w => ({ ...w, sets: await getSetsForWorkout(w.id) }))
-    );
-    setWorkouts(withSets);
-    if (withSets.length > 0 && activeWorkoutId === null) {
-      setActiveWorkoutId(withSets[withSets.length - 1].id);
+    for (const split of SPLIT_NAMES) {
+      const w = await getWorkoutByDateAndName(dateStr, split);
+      if (w) {
+        await openWorkout(split, w.id);
+        return;
+      }
     }
+    // None started → show the picker.
+    setActiveSplit(null);
+    setWorkoutId(null);
+    setCells({});
   }, [dateStr]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function handleStartWorkout() {
-    const id = await createWorkout(dateStr);
-    setActiveWorkoutId(id);
-    await load();
+  async function openWorkout(split: string, id: number) {
+    const sets = await getSetsForWorkout(id);
+    const next: Record<string, Cell> = {};
+    for (const s of sets) {
+      next[cellKey(s.exercise, s.set_number)] = {
+        weight: s.weight_kg != null ? String(s.weight_kg) : '',
+        reps: s.reps != null ? String(s.reps) : '',
+      };
+    }
+    setActiveSplit(split);
+    setWorkoutId(id);
+    setCells(next);
   }
 
-  async function handleLogSet() {
-    if (!exercise.trim()) {
-      Alert.alert('Missing exercise', 'Enter an exercise name.');
-      return;
-    }
+  async function handlePickSplit(split: string) {
+    const existing = await getWorkoutByDateAndName(dateStr, split);
+    const id = existing ? existing.id : await createWorkout(dateStr, split);
+    await openWorkout(split, id);
+  }
+
+  function setCell(exercise: string, setNo: number, patch: Partial<Cell>) {
+    const key = cellKey(exercise, setNo);
+    setCells(prev => {
+      const base: Cell = prev[key] ?? { weight: '', reps: '' };
+      return { ...prev, [key]: { ...base, ...patch } };
+    });
+  }
+
+  // Persist one set on field blur.
+  async function commitCell(exercise: string, setNo: number) {
+    if (workoutId == null) return;
+    const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
+    const w = c.weight.trim() ? parseFloat(c.weight) : null;
+    const r = c.reps.trim() ? parseInt(c.reps, 10) : null;
     try {
-      let wId = activeWorkoutId;
-      if (!wId) {
-        wId = await createWorkout(dateStr);
-        setActiveWorkoutId(wId);
-      }
-
-      const currentSets = workouts.find(w => w.id === wId)?.sets ?? [];
-      const nextSetNumber = currentSets.length + 1;
-      const kg = weightKg.trim() ? parseFloat(weightKg) : null;
-      const r = reps.trim() ? parseInt(reps, 10) : null;
-
-      await logSet(wId, nextSetNumber, exercise.trim(), kg, r);
-      setWeightKg('');
-      setReps('');
-      await load();
+      await upsertSet(workoutId, exercise, setNo, isFinite(w as number) ? w : null, isFinite(r as number) ? r : null);
     } catch (e: any) {
       Alert.alert('Error saving set', e?.message ?? 'Unknown error');
     }
   }
 
-  async function handleDeleteSet(setId: number) {
-    await deleteSet(setId);
-    await load();
+  function handleChangeSplit() {
+    setActiveSplit(null);
   }
 
-  async function handleDeleteWorkout(workoutId: number) {
-    Alert.alert('Delete workout?', 'This removes the workout and all its sets.', [
+  function handleDeleteWorkout() {
+    if (workoutId == null) return;
+    Alert.alert('Delete this workout?', `Removes the ${activeSplit} workout and all its sets for this day.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
           await deleteWorkout(workoutId);
-          if (activeWorkoutId === workoutId) setActiveWorkoutId(null);
           await load();
-        }
+        },
       },
     ]);
   }
-
-  const isToday = dateStr === toDateString(new Date());
 
   return (
     <SafeAreaView style={s.safe}>
@@ -133,73 +140,59 @@ export default function WorkoutScreen() {
           />
         )}
 
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          {/* Add set form */}
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Log Set</Text>
-            <TextInput
-              style={s.input}
-              placeholder="Exercise (e.g. Bench Press)"
-              value={exercise}
-              onChangeText={setExercise}
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
-            <View style={s.row}>
-              <TextInput
-                style={[s.input, { flex: 1, marginRight: 8 }]}
-                placeholder="Weight (kg)"
-                value={weightKg}
-                onChangeText={setWeightKg}
-                keyboardType="decimal-pad"
-              />
-              <TextInput
-                style={[s.input, { flex: 1 }]}
-                placeholder="Reps (optional)"
-                value={reps}
-                onChangeText={setReps}
-                keyboardType="number-pad"
-              />
-            </View>
-            <TouchableOpacity style={s.btn} onPress={handleLogSet}>
-              <Text style={s.btnText}>Add Set</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Workout list */}
-          {workouts.length === 0 ? (
-            <Text style={s.empty}>No workout yet. Add a set above to start.</Text>
-          ) : (
-            workouts.map(w => (
-              <View key={w.id} style={s.card}>
-                <View style={s.workoutHeader}>
-                  <Text style={s.cardTitle}>Workout {w.id}</Text>
-                  <TouchableOpacity onPress={() => handleDeleteWorkout(w.id)}>
-                    <Text style={s.deleteText}>Delete</Text>
-                  </TouchableOpacity>
-                </View>
-                {w.sets.map(set => (
-                  <TouchableOpacity
-                    key={set.id}
-                    style={s.setRow}
-                    onLongPress={() => Alert.alert('Delete set?', `Set ${set.set_number}: ${set.exercise}`, [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Delete', style: 'destructive', onPress: () => handleDeleteSet(set.id) },
-                    ])}
-                  >
-                    <Text style={s.setNum}>{set.set_number}</Text>
-                    <Text style={s.setExercise}>{set.exercise}</Text>
-                    <Text style={s.setDetail}>
-                      {set.weight_kg != null ? `${set.weight_kg} kg` : 'BW'}
-                      {set.reps != null ? `  ×${set.reps}` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {w.sets.length === 0 && <Text style={s.empty}>No sets yet.</Text>}
+        {activeSplit == null ? (
+          // ── Split picker ──
+          <ScrollView contentContainerStyle={s.scroll}>
+            <Text style={s.pickPrompt}>Choose today's workout</Text>
+            {SPLIT_NAMES.map(split => (
+              <TouchableOpacity key={split} style={s.splitBtn} onPress={() => handlePickSplit(split)}>
+                <Text style={s.splitBtnText}>{split}</Text>
+                <Text style={s.splitBtnSub}>{SPLITS[split].length} exercises · {SETS_PER_EXERCISE} sets each</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          // ── Templated logging ──
+          <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+            <View style={s.splitHeader}>
+              <Text style={s.splitTitle}>{activeSplit}</Text>
+              <View style={s.splitActions}>
+                <TouchableOpacity onPress={handleChangeSplit}><Text style={s.changeBtn}>Change</Text></TouchableOpacity>
+                <TouchableOpacity onPress={handleDeleteWorkout}><Text style={s.deleteBtn}>Delete</Text></TouchableOpacity>
               </View>
-            ))
-          )}
-        </ScrollView>
+            </View>
+
+            {SPLITS[activeSplit].map(exercise => (
+              <View key={exercise} style={s.exerciseCard}>
+                <Text style={s.exerciseName}>{exercise}</Text>
+                {Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
+                  const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
+                  return (
+                    <View key={setNo} style={s.setRow}>
+                      <Text style={s.setNum}>Set {setNo}</Text>
+                      <TextInput
+                        style={s.cellInput}
+                        placeholder="kg"
+                        value={c.weight}
+                        onChangeText={t => setCell(exercise, setNo, { weight: t })}
+                        onEndEditing={() => commitCell(exercise, setNo)}
+                        keyboardType="decimal-pad"
+                      />
+                      <TextInput
+                        style={s.cellInput}
+                        placeholder="reps"
+                        value={c.reps}
+                        onChangeText={t => setCell(exercise, setNo, { reps: t })}
+                        onEndEditing={() => commitCell(exercise, setNo)}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -207,21 +200,24 @@ export default function WorkoutScreen() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
-  scroll: { padding: 16, gap: 16, paddingBottom: 40 },
+  scroll: { padding: 16, gap: 12, paddingBottom: 48 },
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
   arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
   dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
-  card: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 16 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 10, fontSize: 15, marginBottom: 8 },
-  row: { flexDirection: 'row' },
-  btn: { backgroundColor: '#111', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 4 },
-  btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  deleteText: { color: '#e00', fontSize: 13 },
-  setRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#e0e0e0' },
-  setNum: { width: 28, fontSize: 13, color: '#aaa', fontWeight: '600' },
-  setExercise: { flex: 1, fontSize: 14, color: '#222' },
-  setDetail: { fontSize: 14, color: '#555', fontWeight: '500' },
-  empty: { fontSize: 13, color: '#aaa', fontStyle: 'italic', marginTop: 4 },
+  // picker
+  pickPrompt: { fontSize: 15, color: '#888', textAlign: 'center', marginBottom: 8 },
+  splitBtn: { backgroundColor: '#111', borderRadius: 12, padding: 18, alignItems: 'center' },
+  splitBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  splitBtnSub: { color: '#bbb', fontSize: 12, marginTop: 4 },
+  // logging
+  splitHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  splitTitle: { fontSize: 20, fontWeight: '800', color: '#111' },
+  splitActions: { flexDirection: 'row', gap: 16 },
+  changeBtn: { fontSize: 14, color: '#007aff', fontWeight: '600' },
+  deleteBtn: { fontSize: 14, color: '#e00' },
+  exerciseCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14 },
+  exerciseName: { fontSize: 15, fontWeight: '600', color: '#222', marginBottom: 8 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  setNum: { width: 48, fontSize: 13, color: '#999', fontWeight: '600' },
+  cellInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, fontSize: 15, textAlign: 'center' },
 });

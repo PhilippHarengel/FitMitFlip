@@ -95,6 +95,15 @@ export async function deleteWorkout(id: number): Promise<void> {
   await db.runAsync('DELETE FROM workouts WHERE id = ?', [id]);
 }
 
+// Resume a split already started for this date (one workout per date+split).
+export async function getWorkoutByDateAndName(date: string, name: string): Promise<Workout | null> {
+  const db = await getDb();
+  return db.getFirstAsync<Workout>(
+    'SELECT * FROM workouts WHERE date = ? AND name = ? ORDER BY id DESC LIMIT 1',
+    [date, name]
+  );
+}
+
 // ─── Sets ────────────────────────────────────────────────────────────────────
 
 export async function getSetsForWorkout(workoutId: number): Promise<WorkoutSet[]> {
@@ -118,6 +127,33 @@ export async function logSet(
     [workoutId, setNumber, exercise, weightKg, reps]
   );
   return result.lastInsertRowId;
+}
+
+// Insert or update a set keyed on (workout_id, exercise, set_number) so editing
+// a templated set never creates duplicate rows. A null weight+reps clears the set.
+export async function upsertSet(
+  workoutId: number,
+  exercise: string,
+  setNumber: number,
+  weightKg: number | null,
+  reps: number | null
+): Promise<void> {
+  const db = await getDb();
+  const existing = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM sets WHERE workout_id = ? AND exercise = ? AND set_number = ?',
+    [workoutId, exercise, setNumber]
+  );
+  if (existing) {
+    await db.runAsync(
+      'UPDATE sets SET weight_kg = ?, reps = ? WHERE id = ?',
+      [weightKg, reps, existing.id]
+    );
+  } else {
+    await db.runAsync(
+      'INSERT INTO sets (workout_id, set_number, exercise, weight_kg, reps) VALUES (?, ?, ?, ?, ?)',
+      [workoutId, setNumber, exercise, weightKg, reps]
+    );
+  }
 }
 
 export async function deleteSet(id: number): Promise<void> {
