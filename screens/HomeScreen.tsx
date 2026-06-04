@@ -38,6 +38,7 @@ export default function HomeScreen() {
   const [workouts, setWorkouts] = useState<WorkoutWithSets[]>([]);
   const [foodCount, setFoodCount] = useState(0);
   const [goalsVisible, setGoalsVisible] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
 
   const dateStr = toDateString(date);
 
@@ -95,22 +96,20 @@ export default function HomeScreen() {
       )}
 
       <ScrollView contentContainerStyle={s.scroll}>
-        {/* Macro card */}
-        <View style={s.card}>
+        {/* Calorie card — tap for full nutrient breakdown */}
+        <TouchableOpacity style={s.card} activeOpacity={0.7} onPress={() => setDetailVisible(true)}>
           <View style={s.cardHeader}>
             <Text style={s.cardTitle}>Nutrition</Text>
             <TouchableOpacity onPress={() => setGoalsVisible(true)}>
               <Text style={s.goalsBtn}>Goals</Text>
             </TouchableOpacity>
           </View>
-          <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
-          <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
-          <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
-          <MacroProgress label="Fat" unit="g" current={macros.fat_g} target={targets.fat_g} />
+          <CalorieHeadline current={macros.kcal} target={targets.kcal} />
           {foodCount === 0 && (
             <Text style={s.empty}>No food logged — go to Food tab to add entries.</Text>
           )}
-        </View>
+          <Text style={s.detailLink}>View all nutrients ›</Text>
+        </TouchableOpacity>
 
         {/* Workout card */}
         <View style={s.card}>
@@ -133,6 +132,15 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
+      <NutrientDetailModal
+        visible={detailVisible}
+        dateLabel={isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+        macros={macros}
+        targets={targets}
+        onClose={() => setDetailVisible(false)}
+        onEditGoals={() => { setDetailVisible(false); setGoalsVisible(true); }}
+      />
+
       <GoalsModal
         visible={goalsVisible}
         initial={targets}
@@ -140,6 +148,60 @@ export default function HomeScreen() {
         onSave={handleSaveGoals}
       />
     </SafeAreaView>
+  );
+}
+
+// Big remaining-calories headline. Falls back to the plain total if no kcal goal.
+function CalorieHeadline({ current, target }: { current: number; target: number | null }) {
+  const cur = Math.round(current);
+
+  if (target == null || target <= 0) {
+    return (
+      <View style={s.kcalBlock}>
+        <Text style={s.kcalBig}>{cur}</Text>
+        <Text style={s.kcalSub}>kcal today</Text>
+      </View>
+    );
+  }
+
+  const tgt = Math.round(target);
+  const remaining = tgt - cur;
+  const over = remaining < 0;
+  const fillPct = `${Math.min(current / target, 1) * 100}%` as const;
+
+  return (
+    <View style={s.kcalBlock}>
+      <Text style={[s.kcalBig, over && s.kcalOver]}>{Math.abs(remaining)}</Text>
+      <Text style={[s.kcalSub, over && s.kcalOverSub]}>{over ? 'kcal over' : 'kcal left'}</Text>
+      <View style={s.kcalTrack}>
+        <View style={[s.kcalFill, { width: fillPct, backgroundColor: over ? '#e6a100' : '#111' }]} />
+      </View>
+      <Text style={s.kcalMeta}>{cur} / {tgt} kcal</Text>
+    </View>
+  );
+}
+
+// Full nutrient breakdown — one MacroProgress row per tracked nutrient.
+function NutrientDetailModal({ visible, dateLabel, macros, targets, onClose, onEditGoals }: {
+  visible: boolean; dateLabel: string; macros: DailyMacros; targets: Targets;
+  onClose: () => void; onEditGoals: () => void;
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
+      <SafeAreaView style={s.modalSafe}>
+        <View style={s.modalHeader}>
+          <TouchableOpacity onPress={onClose}><Text style={s.modalCancel}>Done</Text></TouchableOpacity>
+          <Text style={s.modalTitle}>Nutrients — {dateLabel}</Text>
+          <TouchableOpacity onPress={onEditGoals}><Text style={s.modalSave}>Goals</Text></TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={s.modalBody}>
+          <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
+          <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
+          <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
+          <MacroProgress label="Fat" unit="g" current={macros.fat_g} target={targets.fat_g} />
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -260,6 +322,15 @@ const s = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   cardTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
   goalsBtn: { fontSize: 13, fontWeight: '600', color: '#007aff' },
+  kcalBlock: { alignItems: 'center', paddingVertical: 8 },
+  kcalBig: { fontSize: 48, fontWeight: '800', color: '#111', lineHeight: 52 },
+  kcalOver: { color: '#e6a100' },
+  kcalSub: { fontSize: 14, color: '#888', marginTop: 2 },
+  kcalOverSub: { color: '#e6a100', fontWeight: '600' },
+  kcalTrack: { height: 8, width: '100%', backgroundColor: '#e4e4e4', borderRadius: 4, marginTop: 14, overflow: 'hidden' },
+  kcalFill: { height: 8, borderRadius: 4 },
+  kcalMeta: { fontSize: 12, color: '#999', marginTop: 6 },
+  detailLink: { fontSize: 13, fontWeight: '600', color: '#007aff', textAlign: 'center', marginTop: 14 },
   macroRow: { marginBottom: 14 },
   macroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   macroLabel: { fontSize: 14, color: '#555', fontWeight: '500' },
