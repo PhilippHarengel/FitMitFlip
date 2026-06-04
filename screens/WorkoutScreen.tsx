@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { scheduleRestDone, cancelRest } from '../lib/restNotify';
 import { useFocusEffect } from '@react-navigation/native';
 import ExerciseHistoryModal from './ExerciseHistoryModal';
 import WeeklyPlanModal from './WeeklyPlanModal';
@@ -33,6 +35,8 @@ import { SPLITS, SETS_PER_EXERCISE, isStrengthSplit } from '../db/workoutTemplat
 type Cell = { weight: string; reps: string };
 const cellKey = (exercise: string, setNo: number) => `${exercise}@@${setNo}`;
 const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const REST_SECONDS = 180; // 3 min rest between sets
+const DONE_FLASH_MS = 3000; // how long the "Go!" cue lingers after 0:00
 
 export default function WorkoutScreen() {
   const [date, setDate] = useState(new Date());
@@ -45,6 +49,37 @@ export default function WorkoutScreen() {
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
   const [weeklyVisible, setWeeklyVisible] = useState(false);
   const [adjustVisible, setAdjustVisible] = useState(false);
+
+  // Rest timer — one shared countdown. restKey marks which set row owns it;
+  // restEndsAt is an absolute epoch so it stays correct across backgrounding.
+  const [restKey, setRestKey] = useState<string | null>(null);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [doneFlashKey, setDoneFlashKey] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const notifId = useRef<string | null>(null);
+
+  // Tick once a second while a rest is running; fire haptic + flash at zero.
+  useEffect(() => {
+    if (restEndsAt == null) return;
+    const finishedKey = restKey;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setNowTick(now);
+      if (now >= restEndsAt) {
+        clearInterval(id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setRestEndsAt(null);
+        setRestKey(null);
+        notifId.current = null; // the scheduled notification fires on its own
+        setDoneFlashKey(finishedKey);
+        setTimeout(() => setDoneFlashKey(prev => (prev === finishedKey ? null : prev)), DONE_FLASH_MS);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [restEndsAt, restKey]);
+
+  // Cancel any pending notification when the screen unmounts.
+  useEffect(() => () => { cancelRest(notifId.current); }, []);
 
   const dateStr = toDateString(date);
   const isToday = dateStr === toDateString(new Date());
@@ -114,6 +149,26 @@ export default function WorkoutScreen() {
     } catch (e: any) {
       Alert.alert('Error saving set', e?.message ?? 'Unknown error');
     }
+  }
+
+  function stopRest() {
+    cancelRest(notifId.current);
+    notifId.current = null;
+    setRestEndsAt(null);
+    setRestKey(null);
+  }
+
+  // Green button: save the set, then (re)start the 3:00 rest countdown on it.
+  async function handleConfirmSet(exercise: string, setNo: number) {
+    await commitCell(exercise, setNo);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    cancelRest(notifId.current); // only one timer at a time
+    const key = cellKey(exercise, setNo);
+    setDoneFlashKey(prev => (prev === key ? null : prev));
+    setRestKey(key);
+    setRestEndsAt(Date.now() + REST_SECONDS * 1000);
+    setNowTick(Date.now());
+    notifId.current = await scheduleRestDone(REST_SECONDS);
   }
 
   async function toggleDone() {
@@ -194,7 +249,11 @@ export default function WorkoutScreen() {
                   </View>
 
                   {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
-                    const c = cells[cellKey(exercise, setNo)] ?? { weight: '', reps: '' };
+                    const key = cellKey(exercise, setNo);
+                    const c = cells[key] ?? { weight: '', reps: '' };
+                    const resting = restKey === key && restEndsAt != null;
+                    const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
+                    const flashing = doneFlashKey === key;
                     return (
                       <View key={setNo} style={s.setRow}>
                         <Text style={s.setNum}>Set {setNo}</Text>
@@ -214,6 +273,21 @@ export default function WorkoutScreen() {
                           onEndEditing={() => commitCell(exercise, setNo)}
                           keyboardType="number-pad"
                         />
+                        {resting ? (
+                          <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
+                            <Text style={s.restCountdown}>
+                              {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : flashing ? (
+                          <View style={[s.confirmBtn, s.goBtn]}>
+                            <Text style={s.goText}>Go!</Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity style={s.confirmBtn} onPress={() => handleConfirmSet(exercise, setNo)} activeOpacity={0.7}>
+                            <Ionicons name="checkmark" size={22} color="#fff" />
+                          </TouchableOpacity>
+                        )}
                       </View>
                     );
                   })}
@@ -286,6 +360,11 @@ const s = StyleSheet.create({
   setRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, marginTop: 8 },
   setNum: { width: 48, fontSize: 13, color: '#999', fontWeight: '600' },
   cellInput: { flex: 1, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 8, padding: 9, fontSize: 15, textAlign: 'center' },
+  confirmBtn: { width: 56, height: 38, borderRadius: 8, backgroundColor: '#1a9e54', alignItems: 'center', justifyContent: 'center' },
+  restBtn: { backgroundColor: '#222' },
+  restCountdown: { color: '#fff', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  goBtn: { backgroundColor: '#1a9e54' },
+  goText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   doneBadge: { borderWidth: 1.5, borderColor: '#1a9e54', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4 },
   doneBadgeOn: { backgroundColor: '#1a9e54' },
   doneText: { fontSize: 15, fontWeight: '700', color: '#1a9e54' },
