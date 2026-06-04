@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { getExerciseHistory, type ExerciseDay } from '../db/queries';
+import { isRepsOnly } from '../db/workoutTemplates';
 
 function shortDate(iso: string): string {
   // 'YYYY-MM-DD' → 'DD.MM'
@@ -35,8 +36,10 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
     return () => { alive = false; };
   }, [exercise]);
 
-  // Bodyweight exercises have no weight → fall back to charting average reps.
-  const hasWeight = history.some(d => d.avg_weight != null);
+  // Reps-only exercises (e.g. pull-ups) always chart reps. Otherwise fall back
+  // to reps only when no weight was ever logged.
+  const repsOnly = exercise != null && isRepsOnly(exercise);
+  const hasWeight = !repsOnly && history.some(d => d.avg_weight != null);
   const metricLabel = hasWeight ? 'Avg weight (kg)' : 'Avg reps';
   const metricOf = (d: ExerciseDay) => (hasWeight ? d.avg_weight : d.avg_reps);
 

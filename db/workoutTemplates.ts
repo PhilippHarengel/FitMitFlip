@@ -31,3 +31,8 @@ export const SPLITS: Record<string, string[]> = {
 
 export type SplitName = keyof typeof SPLITS;
 export const SPLIT_NAMES = Object.keys(SPLITS);
+
+// Exercises tracked by reps, not weight (bodyweight/max-rep movements).
+// Their progression chart always plots reps even if a weight was entered.
+export const REPS_ONLY = new Set<string>(['Pull-ups (max reps)']);
+export const isRepsOnly = (exercise: string) => REPS_ONLY.has(exercise);
