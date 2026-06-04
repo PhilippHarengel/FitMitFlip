@@ -58,6 +58,7 @@ export default function WorkoutScreen() {
   const [cells, setCells] = useState<Record<string, Cell>>({});
   const [lastSets, setLastSets] = useState<Record<string, Cell>>({});
   const [openExercise, setOpenExercise] = useState<string | null>(null);
+  const [openSet, setOpenSet] = useState<number>(1); // which set's wheels are expanded
   const [done, setDoneFlag] = useState(false);
   const [historyExercise, setHistoryExercise] = useState<string | null>(null);
   const [weeklyVisible, setWeeklyVisible] = useState(false);
@@ -284,7 +285,7 @@ export default function WorkoutScreen() {
                     <TouchableOpacity
                       style={s.exerciseToggle}
                       activeOpacity={0.6}
-                      onPress={() => setOpenExercise(prev => (prev === exercise ? null : exercise))}
+                      onPress={() => { setOpenExercise(prev => (prev === exercise ? null : exercise)); setOpenSet(1); }}
                     >
                       <Text style={s.exerciseName}>{exercise}</Text>
                       <Text style={[s.exerciseBadge, filled > 0 && s.exerciseBadgeDone]}>{filled}/{SETS_PER_EXERCISE}</Text>
@@ -302,10 +303,20 @@ export default function WorkoutScreen() {
                     const resting = restKey === key && restEndsAt != null;
                     const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
                     const flashing = doneFlashKey === key;
+                    const setOpen = openSet === setNo;
+                    const summary = repsOnly ? `${sel.reps} reps` : `${sel.weight} kg × ${sel.reps}`;
                     return (
                       <View key={setNo} style={s.setBlock}>
                         <View style={s.setHeader}>
-                          <Text style={s.setNum}>Set {setNo}</Text>
+                          <TouchableOpacity
+                            style={s.setHeaderTap}
+                            activeOpacity={0.6}
+                            onPress={() => setOpenSet(prev => (prev === setNo ? 0 : setNo))}
+                          >
+                            <Text style={s.setNum}>Set {setNo}</Text>
+                            <Text style={s.setSummary}>{summary}</Text>
+                            <Text style={s.chevron}>{setOpen ? '▾' : '▸'}</Text>
+                          </TouchableOpacity>
                           {resting ? (
                             <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
                               <Text style={s.restCountdown}>
@@ -322,6 +333,7 @@ export default function WorkoutScreen() {
                             </TouchableOpacity>
                           )}
                         </View>
+                        {setOpen && (
                         <View style={s.wheelRow}>
                           {!repsOnly && (
                             <View style={s.wheelCol}>
@@ -348,6 +360,7 @@ export default function WorkoutScreen() {
                             </Picker>
                           </View>
                         </View>
+                        )}
                       </View>
                     );
                   })}
@@ -418,8 +431,10 @@ const s = StyleSheet.create({
   exerciseBadgeDone: { color: '#111' },
   chevron: { fontSize: 14, color: '#999', width: 14, textAlign: 'center' },
   setBlock: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e8e8e8', paddingTop: 6 },
-  setHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  setHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  setHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   setNum: { fontSize: 13, color: '#999', fontWeight: '600' },
+  setSummary: { flex: 1, fontSize: 14, color: '#222', fontWeight: '600' },
   wheelRow: { flexDirection: 'row', gap: 12 },
   wheelCol: { flex: 1, alignItems: 'center' },
   wheelCap: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
