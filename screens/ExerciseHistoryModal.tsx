@@ -36,19 +36,22 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
     return () => { alive = false; };
   }, [exercise]);
 
-  // Volume load (Σ weight×reps) is the charted metric — it rewards total work
-  // done, not the misleading average weight (100kg×1 used to beat 80kg×10).
-  // Reps-only exercises (pull-ups) and weight-free histories chart total reps.
+  // Chart the top set per session — the heaviest weight lifted that day, so
+  // the line tracks "am I getting stronger" without warm-up sets dragging it
+  // down. Reps-only exercises (pull-ups) chart the best set's reps instead.
   const repsOnly = exercise != null && isRepsOnly(exercise);
-  const hasVolume = !repsOnly && history.some(d => d.volume != null);
-  const metricLabel = hasVolume ? 'Volume load (kg)' : 'Total reps';
-  const unit = hasVolume ? 'kg' : 'reps';
-  const metricOf = (d: ExerciseDay) => (hasVolume ? d.volume : d.total_reps);
+  const hasWeight = !repsOnly && history.some(d => d.top_weight != null);
+  const metricLabel = hasWeight ? 'Top set (kg)' : 'Best set (reps)';
+  const unit = hasWeight ? 'kg' : 'reps';
+  const metricOf = (d: ExerciseDay) => (hasWeight ? d.top_weight : d.top_reps);
 
-  const fmt = (n: number) => Math.round(n).toLocaleString();
+  const fmt = (n: number) =>
+    hasWeight ? (Math.round(n * 10) / 10).toString() : Math.round(n).toString();
 
   const points = history.filter(d => metricOf(d) != null);
-  const values = points.map(d => Math.round(metricOf(d) as number));
+  const values = points.map(d =>
+    hasWeight ? Math.round((metricOf(d) as number) * 10) / 10 : Math.round(metricOf(d) as number)
+  );
   const labels = points.map(d => shortDate(d.date));
 
   const first = values[0];
@@ -97,7 +100,7 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
                     backgroundColor: '#fff',
                     backgroundGradientFrom: '#fff',
                     backgroundGradientTo: '#fff',
-                    decimalPlaces: 0,
+                    decimalPlaces: hasWeight ? 1 : 0,
                     color: (o = 1) => `rgba(17,17,17,${o})`,
                     labelColor: (o = 1) => `rgba(120,120,120,${o})`,
                     propsForDots: { r: '4', strokeWidth: '2', stroke: '#111' },
@@ -114,8 +117,8 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
                     <Text style={s.tDate}>{shortDate(d.date)}</Text>
                     <Text style={s.tVal}>
                       <Text style={s.tValBig}>{fmt(metricOf(d) as number)} {unit}</Text>
-                      {d.avg_weight != null && d.avg_reps != null
-                        ? `   ${Math.round(d.avg_weight * 10) / 10}kg × ${Math.round(d.avg_reps)} avg`
+                      {hasWeight && d.avg_reps != null
+                        ? `   × ${Math.round(d.avg_reps)} reps avg`
                         : ''}
                     </Text>
                     <Text style={s.tSets}>{d.set_count} sets</Text>

@@ -248,13 +248,11 @@ export async function importSessions(sessions: {
 // the average down). Ordered oldest → newest for charting progression.
 export type ExerciseDay = {
   date: string;
-  // Volume load = Σ(weight × reps) over the day's sets — the hypertrophy proxy.
-  // NULL when no set that day had both weight and reps (e.g. bodyweight-only).
-  volume: number | null;
-  total_reps: number | null;
-  // Kept for the per-session detail row; no longer the charted metric.
-  avg_weight: number | null;
-  avg_reps: number | null;
+  // Top set = the heaviest weight (or most reps for bodyweight) that day —
+  // the cleanest "am I lifting more" signal, undiluted by warm-up sets.
+  top_weight: number | null;
+  top_reps: number | null;
+  avg_reps: number | null; // kept for the per-session detail row
   set_count: number;
 };
 
@@ -262,11 +260,10 @@ export async function getExerciseHistory(exercise: string): Promise<ExerciseDay[
   const db = await getDb();
   return db.getAllAsync<ExerciseDay>(
     `SELECT w.date AS date,
-            SUM(s.weight_kg * s.reps) AS volume,
-            SUM(s.reps)               AS total_reps,
-            AVG(s.weight_kg)          AS avg_weight,
-            AVG(s.reps)               AS avg_reps,
-            COUNT(*)                  AS set_count
+            MAX(s.weight_kg) AS top_weight,
+            MAX(s.reps)      AS top_reps,
+            AVG(s.reps)      AS avg_reps,
+            COUNT(*)         AS set_count
      FROM sets s
      JOIN workouts w ON s.workout_id = w.id
      WHERE s.exercise = ?
