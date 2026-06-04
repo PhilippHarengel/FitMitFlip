@@ -36,20 +36,24 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
     return () => { alive = false; };
   }, [exercise]);
 
-  // Reps-only exercises (e.g. pull-ups) always chart reps. Otherwise fall back
-  // to reps only when no weight was ever logged.
+  // Volume load (Σ weight×reps) is the charted metric — it rewards total work
+  // done, not the misleading average weight (100kg×1 used to beat 80kg×10).
+  // Reps-only exercises (pull-ups) and weight-free histories chart total reps.
   const repsOnly = exercise != null && isRepsOnly(exercise);
-  const hasWeight = !repsOnly && history.some(d => d.avg_weight != null);
-  const metricLabel = hasWeight ? 'Avg weight (kg)' : 'Avg reps';
-  const metricOf = (d: ExerciseDay) => (hasWeight ? d.avg_weight : d.avg_reps);
+  const hasVolume = !repsOnly && history.some(d => d.volume != null);
+  const metricLabel = hasVolume ? 'Volume load (kg)' : 'Total reps';
+  const unit = hasVolume ? 'kg' : 'reps';
+  const metricOf = (d: ExerciseDay) => (hasVolume ? d.volume : d.total_reps);
+
+  const fmt = (n: number) => Math.round(n).toLocaleString();
 
   const points = history.filter(d => metricOf(d) != null);
-  const values = points.map(d => Math.round((metricOf(d) as number) * 10) / 10);
+  const values = points.map(d => Math.round(metricOf(d) as number));
   const labels = points.map(d => shortDate(d.date));
 
   const first = values[0];
   const last = values[values.length - 1];
-  const delta = first != null && last != null ? Math.round((last - first) * 10) / 10 : null;
+  const delta = first != null && last != null ? last - first : null;
 
   const chartWidth = Dimensions.get('window').width - 32;
 
@@ -73,10 +77,10 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
 
               {/* Summary line */}
               <View style={s.summary}>
-                <Text style={s.summaryBig}>{last}{hasWeight ? ' kg' : ' reps'}</Text>
+                <Text style={s.summaryBig}>{fmt(last)} {unit}</Text>
                 {delta != null && points.length > 1 && (
                   <Text style={[s.delta, delta > 0 ? s.up : delta < 0 ? s.down : s.flat]}>
-                    {delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {Math.abs(delta)} vs first ({first})
+                    {delta > 0 ? '↑' : delta < 0 ? '↓' : '→'} {fmt(Math.abs(delta))} vs first ({fmt(first)})
                   </Text>
                 )}
               </View>
@@ -88,12 +92,12 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
                   data={{ labels, datasets: [{ data: values }] }}
                   width={chartWidth}
                   height={240}
-                  yAxisSuffix={hasWeight ? '' : ''}
+                  yAxisSuffix=""
                   chartConfig={{
                     backgroundColor: '#fff',
                     backgroundGradientFrom: '#fff',
                     backgroundGradientTo: '#fff',
-                    decimalPlaces: hasWeight ? 1 : 0,
+                    decimalPlaces: 0,
                     color: (o = 1) => `rgba(17,17,17,${o})`,
                     labelColor: (o = 1) => `rgba(120,120,120,${o})`,
                     propsForDots: { r: '4', strokeWidth: '2', stroke: '#111' },
@@ -109,8 +113,10 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
                   <View key={d.date} style={s.tableRow}>
                     <Text style={s.tDate}>{shortDate(d.date)}</Text>
                     <Text style={s.tVal}>
-                      {d.avg_weight != null ? `${Math.round(d.avg_weight * 10) / 10} kg` : '–'}
-                      {d.avg_reps != null ? `  ×${Math.round(d.avg_reps * 10) / 10}` : ''}
+                      <Text style={s.tValBig}>{fmt(metricOf(d) as number)} {unit}</Text>
+                      {d.avg_weight != null && d.avg_reps != null
+                        ? `   ${Math.round(d.avg_weight * 10) / 10}kg × ${Math.round(d.avg_reps)} avg`
+                        : ''}
                     </Text>
                     <Text style={s.tSets}>{d.set_count} sets</Text>
                   </View>
@@ -143,6 +149,7 @@ const s = StyleSheet.create({
   table: { marginTop: 8, gap: 2 },
   tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#eee' },
   tDate: { width: 56, fontSize: 13, color: '#999', fontWeight: '600' },
-  tVal: { flex: 1, fontSize: 14, color: '#222' },
+  tVal: { flex: 1, fontSize: 13, color: '#aaa' },
+  tValBig: { fontSize: 14, color: '#222', fontWeight: '600' },
   tSets: { fontSize: 12, color: '#aaa' },
 });
