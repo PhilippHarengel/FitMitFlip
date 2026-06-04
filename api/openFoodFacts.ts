@@ -1,5 +1,9 @@
 const BASE = 'https://world.openfoodfacts.org';
 
+// OpenFoodFacts asks every client to identify itself. Requests without a
+// User-Agent are throttled or rejected.
+const USER_AGENT = 'FitMitFlip/1.0 (personal fitness tracker)';
+
 export type NutrimentData = {
   kcal_per_100g: number | null;
   protein_g: number | null;
@@ -13,6 +17,23 @@ export type ProductResult = {
   name: string;
   nutriments: NutrimentData;
 };
+
+// AbortSignal.timeout() does not exist in the Hermes runtime, so use a manual
+// AbortController + setTimeout — supported everywhere. (The old version threw
+// synchronously inside the try, which the catch swallowed, making every lookup
+// silently return "not found.")
+async function fetchWithTimeout(url: string, ms = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Tries multiple field names because OpenFoodFacts data quality is variable.
 // Returns null (not 0) when a field is genuinely missing — callers can show
@@ -42,18 +63,21 @@ function parseNutriments(n: Record<string, unknown>): NutrimentData {
 
 export async function lookupBarcode(barcode: string): Promise<ProductResult | null> {
   try {
-    const res = await fetch(
-      `${BASE}/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,product_name_de,nutriments`,
-      { signal: AbortSignal.timeout(8000) }
+    const res = await fetchWithTimeout(
+      `${BASE}/api/v2/product/${encodeURIComponent(barcode)}.json?fields=product_name,product_name_de,nutriments`
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[OpenFoodFacts] barcode ${barcode}: HTTP ${res.status}`);
+      return null;
+    }
     const data = await res.json();
     if (data.status !== 1 || !data.product) return null;
 
     const p = data.product;
     const name: string = p.product_name_de || p.product_name || 'Unknown product';
     return { barcode, name, nutriments: parseNutriments(p.nutriments ?? {}) };
-  } catch {
+  } catch (e) {
+    console.warn(`[OpenFoodFacts] barcode ${barcode} lookup failed:`, e);
     return null;
   }
 }
@@ -66,10 +90,11 @@ export async function searchByName(query: string): Promise<ProductResult[]> {
       page_size: '15',
       fields: 'product_name,product_name_de,nutriments,code',
     });
-    const res = await fetch(`${BASE}/cgi/search.pl?${params}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return [];
+    const res = await fetchWithTimeout(`${BASE}/cgi/search.pl?${params}`);
+    if (!res.ok) {
+      console.warn(`[OpenFoodFacts] search "${query}": HTTP ${res.status}`);
+      return [];
+    }
     const data = await res.json();
     return (data.products ?? [])
       .filter((p: any) => p.product_name || p.product_name_de)
@@ -78,7 +103,8 @@ export async function searchByName(query: string): Promise<ProductResult[]> {
         name: p.product_name_de || p.product_name,
         nutriments: parseNutriments(p.nutriments ?? {}),
       }));
-  } catch {
+  } catch (e) {
+    console.warn(`[OpenFoodFacts] search "${query}" failed:`, e);
     return [];
   }
 }
