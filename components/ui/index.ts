@@ -1,5 +1,7 @@
 export { Screen } from './Screen';
 export { Card } from './Card';
+export { Sheet } from './Sheet';
+export { SwipeRow } from './SwipeRow';
 export { ListSection, ListRow } from './List';
 export { Button } from './Button';
 export { ProgressBar } from './ProgressBar';
