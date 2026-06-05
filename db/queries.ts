@@ -42,6 +42,38 @@ export async function exportAllData(): Promise<string> {
   );
 }
 
+// Restore a backup produced by exportAllData(): wipes every table and reloads
+// the rows verbatim (ids preserved so workout↔set links stay intact). Runs in a
+// transaction so a malformed file can't leave a half-restored database.
+export async function importAllData(json: string): Promise<{ tables: number; rows: number }> {
+  const parsed = JSON.parse(json) as { app?: string; tables?: Record<string, Record<string, unknown>[]> };
+  if (parsed.app !== 'FitMitFlip' || !parsed.tables) {
+    throw new Error('Not a FitMitFlip backup file.');
+  }
+  const order = ['workouts', 'sets', 'foods', 'food_log', 'targets', 'schedule', 'schedule_overrides', 'completions'];
+  const db = await getDb();
+  let rowCount = 0;
+  await db.withTransactionAsync(async () => {
+    // Delete children before parents; the dump has no FK constraints but keep it tidy.
+    for (const t of [...order].reverse()) await db.runAsync(`DELETE FROM ${t}`);
+    for (const t of order) {
+      const rows = parsed.tables![t] ?? [];
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        if (cols.length === 0) continue;
+        const placeholders = cols.map(() => '?').join(', ');
+        const values = cols.map(c => row[c] as any);
+        await db.runAsync(
+          `INSERT INTO ${t} (${cols.join(', ')}) VALUES (${placeholders})`,
+          values
+        );
+        rowCount++;
+      }
+    }
+  });
+  return { tables: order.length, rows: rowCount };
+}
+
 // ─── Weekly schedule ─────────────────────────────────────────────────────────
 
 export async function getScheduleBase(): Promise<Record<number, string>> {
