@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
 import { backupToFile } from '../db/backup';
@@ -18,6 +20,7 @@ import {
   getDailyMacros,
   getFoodLogForDate,
   getPlannedType,
+  importAllData,
   isDone,
   getTargets,
   setTargets,
@@ -38,6 +41,7 @@ export default function HomeScreen() {
   const [goalsVisible, setGoalsVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const dateStr = toDateString(date);
 
@@ -73,6 +77,41 @@ export default function HomeScreen() {
       Alert.alert('Backup failed', e?.message ?? 'Unknown error');
     } finally {
       setBackingUp(false);
+    }
+  }
+
+  // Restore a backup JSON (e.g. exported from the Expo Go build). Overwrites all
+  // current data, so confirm first.
+  async function handleRestore() {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets?.[0]) return;
+      const text = await new File(picked.assets[0].uri).text();
+      Alert.alert(
+        'Restore this backup?',
+        'This replaces ALL data currently in the app with the backup. It cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore',
+            style: 'destructive',
+            onPress: async () => {
+              setRestoring(true);
+              try {
+                const r = await importAllData(text);
+                await load();
+                Alert.alert('Restore complete', `Loaded ${r.rows} rows from the backup.`);
+              } catch (e: any) {
+                Alert.alert('Restore failed', e?.message ?? 'Unknown error');
+              } finally {
+                setRestoring(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert('Restore failed', e?.message ?? 'Unknown error');
     }
   }
 
@@ -116,8 +155,11 @@ export default function HomeScreen() {
         )}
 
         {/* Backup */}
-        <TouchableOpacity style={s.backupBtn} onPress={handleBackup} disabled={backingUp}>
+        <TouchableOpacity style={s.backupBtn} onPress={handleBackup} disabled={backingUp || restoring}>
           <Text style={s.backupText}>{backingUp ? 'Preparing backup…' : 'Back up data'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.backupBtn} onPress={handleRestore} disabled={backingUp || restoring}>
+          <Text style={s.backupText}>{restoring ? 'Restoring…' : 'Restore from backup'}</Text>
         </TouchableOpacity>
       </ScrollView>
 
