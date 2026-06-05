@@ -1,20 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
+import { Screen, Card, ListSection, ListRow, Button, ProgressBar, Ring, Icon } from '../components/ui';
+import { useTheme, type Theme } from '../theme';
 import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
@@ -28,10 +20,13 @@ import {
   type DailyMacros,
   type Targets,
 } from '../db/queries';
+import { deriveWorkoutState, deriveNutritionState } from './todayState';
 
 const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat_g: null };
 
 export default function HomeScreen() {
+  const t = useTheme();
+  const navigation = useNavigation<any>(); // cross-tab navigate + setOptions; tab/stack types don't compose cleanly
   const { date, setDate } = useSelectedDate();
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [targets, setTargetsState] = useState<Targets>(EMPTY_TARGETS);
@@ -44,9 +39,18 @@ export default function HomeScreen() {
   const [restoring, setRestoring] = useState(false);
 
   const dateStr = toDateString(date);
+  const isToday = dateStr === toDateString(new Date());
+  const dateLabel = isToday
+    ? 'Today'
+    : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // Drive the native large title off the selected date.
+  useEffect(() => {
+    navigation.setOptions({ title: dateLabel });
+  }, [navigation, dateLabel]);
 
   const load = useCallback(async () => {
-    const [m, t, planned, done, fl] = await Promise.all([
+    const [m, tg, planned, done, fl] = await Promise.all([
       getDailyMacros(dateStr),
       getTargets(),
       getPlannedType(dateStr),
@@ -54,7 +58,7 @@ export default function HomeScreen() {
       getFoodLogForDate(dateStr),
     ]);
     setMacros(m);
-    setTargetsState(t);
+    setTargetsState(tg);
     setPlannedType(planned);
     setWorkoutDone(done);
     setFoodCount(fl.length);
@@ -62,9 +66,9 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function handleSaveGoals(t: Targets) {
-    await setTargets(t);
-    setTargetsState(t);
+  async function handleSaveGoals(next: Targets) {
+    await setTargets(next);
+    setTargetsState(next);
     setGoalsVisible(false);
   }
 
@@ -80,8 +84,6 @@ export default function HomeScreen() {
     }
   }
 
-  // Restore a backup JSON (e.g. exported from the Expo Go build). Overwrites all
-  // current data, so confirm first.
   async function handleRestore() {
     try {
       const picked = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
@@ -115,82 +117,153 @@ export default function HomeScreen() {
     }
   }
 
-  const isToday = dateStr === toDateString(new Date());
+  const nutritionState = deriveNutritionState(targets, foodCount);
+  const workoutState = deriveWorkoutState(plannedType, workoutDone);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <Screen>
       <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
 
-      <ScrollView contentContainerStyle={s.scroll}>
-        {/* Calorie card — tap for full nutrient breakdown */}
-        <TouchableOpacity style={s.card} activeOpacity={0.7} onPress={() => setDetailVisible(true)}>
-          <View style={s.cardHeader}>
-            <Text style={s.cardTitle}>Nutrition</Text>
-            <TouchableOpacity onPress={() => setGoalsVisible(true)}>
-              <Text style={s.goalsBtn}>Goals</Text>
-            </TouchableOpacity>
-          </View>
-          <CalorieHeadline current={macros.kcal} target={targets.kcal} />
-          {foodCount === 0 && (
-            <Text style={s.empty}>No food logged — go to Food tab to add entries.</Text>
-          )}
-          <Text style={s.detailLink}>View all nutrients ›</Text>
-        </TouchableOpacity>
+      {/* ── Nutrition (top) ─────────────────────────────────────────────── */}
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.spacing.sm }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: t.colors.secondaryLabel, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            Nutrition
+          </Text>
+          <TouchableOpacity onPress={() => setGoalsVisible(true)} hitSlop={8}>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: t.colors.accent }}>Goals</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* Workout card — only on training days; shows done / not-done status */}
-        {plannedType !== 'Rest' && (
-          <View style={s.card}>
-            <View style={s.workoutRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cardTitle}>Workout</Text>
-                <Text style={s.workoutType}>{plannedType}</Text>
-              </View>
-              <View style={[s.statusBadge, workoutDone && s.statusBadgeDone]}>
-                <Text style={[s.statusText, workoutDone && s.statusTextDone]}>
-                  {workoutDone ? '✓ Done' : 'Not done yet'}
-                </Text>
-              </View>
-            </View>
+        <CalorieHeadline current={macros.kcal} target={targets.kcal} />
+
+        {nutritionState === 'no-goals' ? (
+          <View style={{ marginTop: t.spacing.md }}>
+            <Button title="Set your targets" variant="tinted" icon="target" onPress={() => setGoalsVisible(true)} />
           </View>
+        ) : (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: t.spacing.lg }}>
+              <Ring value={macros.protein_g} target={targets.protein_g} color={t.colors.protein} label="Protein" />
+              <Ring value={macros.carbs_g} target={targets.carbs_g} color={t.colors.carbs} label="Carbs" />
+              <Ring value={macros.fat_g} target={targets.fat_g} color={t.colors.fat} label="Fat" />
+            </View>
+            {nutritionState === 'empty' && (
+              <TouchableOpacity onPress={() => navigation.navigate('Food')} style={{ marginTop: t.spacing.md }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: t.colors.accent, textAlign: 'center' }}>
+                  Log your first meal ›
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
-        {/* Backup */}
-        <TouchableOpacity style={s.backupBtn} onPress={handleBackup} disabled={backingUp || restoring}>
-          <Text style={s.backupText}>{backingUp ? 'Preparing backup…' : 'Back up data'}</Text>
+        <TouchableOpacity onPress={() => setDetailVisible(true)} style={{ marginTop: t.spacing.md }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: t.colors.accent, textAlign: 'center' }}>
+            View all nutrients ›
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.backupBtn} onPress={handleRestore} disabled={backingUp || restoring}>
-          <Text style={s.backupText}>{restoring ? 'Restoring…' : 'Restore from backup'}</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      </Card>
+
+      {/* ── Workout ─────────────────────────────────────────────────────── */}
+      <WorkoutCard
+        state={workoutState}
+        plannedType={plannedType}
+        onStart={() => navigation.navigate('Workout')}
+      />
+
+      {/* ── More ────────────────────────────────────────────────────────── */}
+      <ListSection header="More">
+        <ListRow icon="target" title="Goals" onPress={() => setGoalsVisible(true)} />
+        <ListRow
+          icon="square.and.arrow.up"
+          title={backingUp ? 'Preparing backup…' : 'Back up data'}
+          chevron={false}
+          onPress={backingUp || restoring ? undefined : handleBackup}
+        />
+        <ListRow
+          icon="square.and.arrow.down"
+          title={restoring ? 'Restoring…' : 'Restore from backup'}
+          chevron={false}
+          onPress={backingUp || restoring ? undefined : handleRestore}
+        />
+      </ListSection>
 
       <NutrientDetailModal
         visible={detailVisible}
-        dateLabel={isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+        dateLabel={dateLabel}
         macros={macros}
         targets={targets}
         onClose={() => setDetailVisible(false)}
         onEditGoals={() => { setDetailVisible(false); setGoalsVisible(true); }}
       />
-
       <GoalsModal
         visible={goalsVisible}
         initial={targets}
         onClose={() => setGoalsVisible(false)}
         onSave={handleSaveGoals}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-// Big remaining-calories headline. Falls back to the plain total if no kcal goal.
+// ── Workout card (rest / pending / done) ─────────────────────────────────────
+function WorkoutCard({ state, plannedType, onStart }: {
+  state: 'rest' | 'pending' | 'done'; plannedType: string; onStart: () => void;
+}) {
+  const t = useTheme();
+
+  if (state === 'rest') {
+    return (
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.md }}>
+          <Icon name="moon.zzz.fill" color={t.colors.secondaryLabel} size={26} />
+          <View>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: t.colors.label }}>Rest day</Text>
+            <Text style={{ fontSize: 14, color: t.colors.secondaryLabel, marginTop: 1 }}>Recovery — nothing planned</Text>
+          </View>
+        </View>
+      </Card>
+    );
+  }
+
+  if (state === 'done') {
+    return (
+      <Card>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: t.colors.secondaryLabel, textTransform: 'uppercase', letterSpacing: 0.5 }}>Workout</Text>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: t.colors.label, marginTop: 2 }}>{plannedType}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Icon name="checkmark.circle.fill" color={t.colors.success} size={22} />
+            <Text style={{ fontSize: 15, fontWeight: '700', color: t.colors.success }}>Done</Text>
+          </View>
+        </View>
+      </Card>
+    );
+  }
+
+  // pending
+  return (
+    <Card>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: t.colors.secondaryLabel, textTransform: 'uppercase', letterSpacing: 0.5 }}>Today's workout</Text>
+      <Text style={{ fontSize: 22, fontWeight: '800', color: t.colors.label, marginTop: 2, marginBottom: t.spacing.md }}>{plannedType}</Text>
+      <Button title="Start workout" icon="play.fill" onPress={onStart} />
+    </Card>
+  );
+}
+
+// ── Calorie headline: big number + bar (falls back to plain total, no goal) ──
 function CalorieHeadline({ current, target }: { current: number; target: number | null }) {
+  const t = useTheme();
   const cur = Math.round(current);
 
   if (target == null || target <= 0) {
     return (
-      <View style={s.kcalBlock}>
-        <Text style={s.kcalBig}>{cur}</Text>
-        <Text style={s.kcalSub}>kcal today</Text>
+      <View style={{ alignItems: 'center', paddingVertical: t.spacing.sm }}>
+        <Text style={{ fontSize: 48, fontWeight: '800', color: t.colors.label, lineHeight: 52 }} maxFontSizeMultiplier={1.2}>{cur}</Text>
+        <Text style={{ fontSize: 14, color: t.colors.secondaryLabel, marginTop: 2 }}>kcal today</Text>
       </View>
     );
   }
@@ -198,97 +271,92 @@ function CalorieHeadline({ current, target }: { current: number; target: number 
   const tgt = Math.round(target);
   const remaining = tgt - cur;
   const over = remaining < 0;
-  const fillPct = `${Math.min(current / target, 1) * 100}%` as const;
 
   return (
-    <View style={s.kcalBlock}>
-      <Text style={[s.kcalBig, over && s.kcalOver]}>{Math.abs(remaining)}</Text>
-      <Text style={[s.kcalSub, over && s.kcalOverSub]}>{over ? 'kcal over' : 'kcal left'}</Text>
-      <View style={s.kcalTrack}>
-        <View style={[s.kcalFill, { width: fillPct, backgroundColor: over ? '#e6a100' : '#111' }]} />
+    <View style={{ paddingVertical: t.spacing.sm }}>
+      <View style={{ alignItems: 'center' }}>
+        <Text style={{ fontSize: 48, fontWeight: '800', lineHeight: 52, color: over ? t.colors.warning : t.colors.label }} maxFontSizeMultiplier={1.2}>
+          {Math.abs(remaining)}
+        </Text>
+        <Text style={{ fontSize: 14, marginTop: 2, fontWeight: over ? '600' : '400', color: over ? t.colors.warning : t.colors.secondaryLabel }}>
+          {over ? 'kcal over' : 'kcal left'}
+        </Text>
       </View>
-      <Text style={s.kcalMeta}>{cur} / {tgt} kcal</Text>
+      <View style={{ marginTop: t.spacing.md }}>
+        <ProgressBar value={current} target={target} />
+      </View>
+      <Text style={{ fontSize: 12, color: t.colors.secondaryLabel, marginTop: 6, textAlign: 'center' }}>{cur} / {tgt} kcal</Text>
     </View>
   );
 }
 
-// Full nutrient breakdown — one MacroProgress row per tracked nutrient.
+// ── Nutrient detail modal (themed) ───────────────────────────────────────────
 function NutrientDetailModal({ visible, dateLabel, macros, targets, onClose, onEditGoals }: {
   visible: boolean; dateLabel: string; macros: DailyMacros; targets: Targets;
   onClose: () => void; onEditGoals: () => void;
 }) {
+  const t = useTheme();
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <SafeAreaView style={s.modalSafe}>
-        <View style={s.modalHeader}>
-          <TouchableOpacity onPress={onClose}><Text style={s.modalCancel}>Done</Text></TouchableOpacity>
-          <Text style={s.modalTitle}>Nutrients — {dateLabel}</Text>
-          <TouchableOpacity onPress={onEditGoals}><Text style={s.modalSave}>Goals</Text></TouchableOpacity>
-        </View>
-        <ScrollView contentContainerStyle={s.modalBody}>
+      <View style={{ flex: 1, backgroundColor: t.colors.bgGrouped }}>
+        <ModalHeader theme={t} left="Done" onLeft={onClose} title={`Nutrients — ${dateLabel}`} right="Goals" onRight={onEditGoals} />
+        <ScrollView contentContainerStyle={{ padding: t.spacing.lg, gap: t.spacing.md }}>
           <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
           <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
           <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
           <MacroProgress label="Fat" unit="g" current={macros.fat_g} target={targets.fat_g} />
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
-// One macro row: progress bar vs target, or a plain total if no target is set.
 function MacroProgress({ label, unit, current, target }: {
   label: string; unit: string; current: number; target: number | null;
 }) {
+  const t = useTheme();
   const cur = Math.round(current);
 
   if (target == null || target <= 0) {
     return (
-      <View style={s.macroRow}>
-        <View style={s.macroHeader}>
-          <Text style={s.macroLabel}>{label}</Text>
-          <Text style={s.macroValue}>{cur}{unit}</Text>
-        </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={{ fontSize: 15, color: t.colors.secondaryLabel, fontWeight: '500' }}>{label}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: t.colors.label }}>{cur}{unit}</Text>
       </View>
     );
   }
 
   const tgt = Math.round(target);
-  const ratio = current / target;
   const over = current > target;
-  const fillPct = `${Math.min(ratio, 1) * 100}%` as const;
   const remaining = Math.round(target - current);
 
   return (
-    <View style={s.macroRow}>
-      <View style={s.macroHeader}>
-        <Text style={s.macroLabel}>{label}</Text>
-        <Text style={s.macroValue}>
-          {cur} / {tgt}{unit}
-        </Text>
+    <View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={{ fontSize: 15, color: t.colors.secondaryLabel, fontWeight: '500' }}>{label}</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: t.colors.label }}>{cur} / {tgt}{unit}</Text>
       </View>
-      <View style={s.barTrack}>
-        <View style={[s.barFill, { width: fillPct, backgroundColor: over ? '#e6a100' : '#111' }]} />
+      <View style={{ marginTop: 6 }}>
+        <ProgressBar value={current} target={target} />
       </View>
-      <Text style={[s.macroSub, over && s.macroOver]}>
+      <Text style={{ fontSize: 12, marginTop: 4, color: over ? t.colors.warning : t.colors.secondaryLabel, fontWeight: over ? '600' : '400' }}>
         {over ? `${Math.abs(remaining)}${unit} over` : `${remaining}${unit} left`}
       </Text>
     </View>
   );
 }
 
-// ─── Goals modal ───────────────────────────────────────────────────────────────
-
+// ── Goals modal (themed) ─────────────────────────────────────────────────────
 function GoalsModal({ visible, initial, onClose, onSave }: {
   visible: boolean; initial: Targets; onClose: () => void; onSave: (t: Targets) => void;
 }) {
+  const t = useTheme();
   const toStr = (v: number | null) => (v == null ? '' : String(v));
   const [kcal, setKcal] = useState(toStr(initial.kcal));
   const [protein, setProtein] = useState(toStr(initial.protein_g));
   const [carbs, setCarbs] = useState(toStr(initial.carbs_g));
   const [fat, setFat] = useState(toStr(initial.fat_g));
 
-  // Re-seed the fields whenever the modal reopens with current targets.
   useEffect(() => {
     if (visible) {
       setKcal(toStr(initial.kcal));
@@ -299,92 +367,65 @@ function GoalsModal({ visible, initial, onClose, onSave }: {
   }, [visible, initial]);
 
   function parse(v: string): number | null {
-    const t = v.trim();
-    if (!t) return null;
-    const n = parseFloat(t);
+    const s = v.trim();
+    if (!s) return null;
+    const n = parseFloat(s);
     return isFinite(n) && n > 0 ? n : null;
   }
 
   function handleSave() {
-    onSave({
-      kcal: parse(kcal),
-      protein_g: parse(protein),
-      carbs_g: parse(carbs),
-      fat_g: parse(fat),
-    });
+    onSave({ kcal: parse(kcal), protein_g: parse(protein), carbs_g: parse(carbs), fat_g: parse(fat) });
   }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <SafeAreaView style={s.modalSafe}>
-        <View style={s.modalHeader}>
-          <TouchableOpacity onPress={onClose}><Text style={s.modalCancel}>Cancel</Text></TouchableOpacity>
-          <Text style={s.modalTitle}>Daily Goals</Text>
-          <TouchableOpacity onPress={handleSave}><Text style={s.modalSave}>Save</Text></TouchableOpacity>
-        </View>
-        <ScrollView contentContainerStyle={s.modalBody} keyboardShouldPersistTaps="handled">
-          <Text style={s.modalHint}>Leave a field blank to track that macro without a goal.</Text>
-          <Field label="Calories (kcal)" value={kcal} onChange={setKcal} />
-          <Field label="Protein (g)" value={protein} onChange={setProtein} />
-          <Field label="Carbs (g)" value={carbs} onChange={setCarbs} />
-          <Field label="Fat (g)" value={fat} onChange={setFat} />
+      <View style={{ flex: 1, backgroundColor: t.colors.bgGrouped }}>
+        <ModalHeader theme={t} left="Cancel" onLeft={onClose} title="Daily Goals" right="Save" onRight={handleSave} />
+        <ScrollView contentContainerStyle={{ padding: t.spacing.lg, gap: t.spacing.md }} keyboardShouldPersistTaps="handled">
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: t.spacing.sm }}>
+            Leave a field blank to track that macro without a goal.
+          </Text>
+          <Field theme={t} label="Calories (kcal)" value={kcal} onChange={setKcal} />
+          <Field theme={t} label="Protein (g)" value={protein} onChange={setProtein} />
+          <Field theme={t} label="Carbs (g)" value={carbs} onChange={setCarbs} />
+          <Field theme={t} label="Fat (g)" value={fat} onChange={setFat} />
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({ theme, label, value, onChange }: { theme: Theme; label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <View style={s.field}>
-      <Text style={s.fieldLabel}>{label}</Text>
-      <TextInput style={s.input} value={value} onChangeText={onChange} keyboardType="decimal-pad" placeholder="—" />
+    <View>
+      <Text style={{ fontSize: 13, color: theme.colors.secondaryLabel, marginBottom: 4 }}>{label}</Text>
+      <TextInput
+        style={{ backgroundColor: theme.colors.card, color: theme.colors.label, borderRadius: theme.radius.control, padding: 12, fontSize: 16 }}
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        placeholder="—"
+        placeholderTextColor={theme.colors.secondaryLabel}
+      />
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  scroll: { padding: 16, gap: 16 },
-  card: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 16 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
-  goalsBtn: { fontSize: 13, fontWeight: '600', color: '#007aff' },
-  kcalBlock: { alignItems: 'center', paddingVertical: 8 },
-  kcalBig: { fontSize: 48, fontWeight: '800', color: '#111', lineHeight: 52 },
-  kcalOver: { color: '#e6a100' },
-  kcalSub: { fontSize: 14, color: '#888', marginTop: 2 },
-  kcalOverSub: { color: '#e6a100', fontWeight: '600' },
-  kcalTrack: { height: 8, width: '100%', backgroundColor: '#e4e4e4', borderRadius: 4, marginTop: 14, overflow: 'hidden' },
-  kcalFill: { height: 8, borderRadius: 4 },
-  kcalMeta: { fontSize: 12, color: '#999', marginTop: 6 },
-  detailLink: { fontSize: 13, fontWeight: '600', color: '#007aff', textAlign: 'center', marginTop: 14 },
-  macroRow: { marginBottom: 14 },
-  macroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  macroLabel: { fontSize: 14, color: '#555', fontWeight: '500' },
-  macroValue: { fontSize: 15, fontWeight: '700', color: '#111' },
-  barTrack: { height: 8, backgroundColor: '#e4e4e4', borderRadius: 4, marginTop: 6, overflow: 'hidden' },
-  barFill: { height: 8, borderRadius: 4 },
-  macroSub: { fontSize: 12, color: '#999', marginTop: 4 },
-  macroOver: { color: '#e6a100', fontWeight: '600' },
-  empty: { fontSize: 13, color: '#aaa', fontStyle: 'italic', marginTop: 4 },
-  workoutRow: { flexDirection: 'row', alignItems: 'center' },
-  workoutType: { fontSize: 18, fontWeight: '800', color: '#111', marginTop: 4 },
-  statusBadge: { borderWidth: 1.5, borderColor: '#bbb', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
-  statusBadgeDone: { backgroundColor: '#1a9e54', borderColor: '#1a9e54' },
-  statusText: { fontSize: 14, fontWeight: '700', color: '#999' },
-  statusTextDone: { color: '#fff' },
-  backupBtn: { alignItems: 'center', paddingVertical: 12 },
-  backupText: { fontSize: 14, color: '#007aff', fontWeight: '600' },
-  // modal
-  modalSafe: { flex: 1, backgroundColor: '#fff' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ddd' },
-  modalTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#111', marginHorizontal: 8 },
-  modalCancel: { fontSize: 15, color: '#666' },
-  modalSave: { fontSize: 15, color: '#007aff', fontWeight: '600' },
-  modalBody: { padding: 20, gap: 8 },
-  modalHint: { fontSize: 13, color: '#999', marginBottom: 8 },
-  field: { marginBottom: 8 },
-  fieldLabel: { fontSize: 13, color: '#666', marginBottom: 4 },
-  input: { backgroundColor: '#f2f2f2', borderRadius: 8, padding: 12, fontSize: 16 },
-});
+// Shared modal header (Cancel/Title/Save). A precursor to PR2's `Sheet` component.
+function ModalHeader({ theme, left, onLeft, title, right, onRight }: {
+  theme: Theme; left: string; onLeft: () => void; title: string; right?: string; onRight?: () => void;
+}) {
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
+      borderBottomWidth: 0.5, borderBottomColor: theme.colors.separator, backgroundColor: theme.colors.bg,
+    }}>
+      <TouchableOpacity onPress={onLeft} hitSlop={8}><Text style={{ fontSize: 17, color: theme.colors.accent }}>{left}</Text></TouchableOpacity>
+      <Text style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: theme.colors.label, marginHorizontal: theme.spacing.sm }} numberOfLines={1}>{title}</Text>
+      {right && onRight
+        ? <TouchableOpacity onPress={onRight} hitSlop={8}><Text style={{ fontSize: 17, fontWeight: '600', color: theme.colors.accent }}>{right}</Text></TouchableOpacity>
+        : <View style={{ width: 50 }} />}
+    </View>
+  );
+}
