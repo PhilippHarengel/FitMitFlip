@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from './screens/HomeScreen';
 import WorkoutScreen from './screens/WorkoutScreen';
 import FoodScreen from './screens/FoodScreen';
+import { DateProvider } from './components/DateContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -17,6 +18,7 @@ function icon(active: keyof typeof Ionicons.glyphMap, inactive: keyof typeof Ion
 export default function App() {
   return (
     <NavigationContainer>
+      <DateProvider>
       <Tab.Navigator
         initialRouteName="Home"
         screenOptions={{
@@ -42,6 +44,7 @@ export default function App() {
           options={{ tabBarIcon: icon('nutrition', 'nutrition-outline') }}
         />
       </Tab.Navigator>
+      </DateProvider>
     </NavigationContainer>
   );
 }

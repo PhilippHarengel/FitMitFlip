@@ -10,33 +10,30 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
+import DateNavigator from '../components/DateNavigator';
+import { useSelectedDate } from '../components/DateContext';
 import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
   getFoodLogForDate,
-  getWorkoutsForDate,
-  getSetsForWorkout,
+  getPlannedType,
+  isDone,
   getTargets,
   setTargets,
   toDateString,
   type DailyMacros,
   type Targets,
-  type Workout,
-  type WorkoutSet,
 } from '../db/queries';
-
-type WorkoutWithSets = Workout & { sets: WorkoutSet[] };
 
 const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat_g: null };
 
 export default function HomeScreen() {
-  const [date, setDate] = useState(new Date());
-  const [showPicker, setShowPicker] = useState(false);
+  const { date, setDate } = useSelectedDate();
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [targets, setTargetsState] = useState<Targets>(EMPTY_TARGETS);
-  const [workouts, setWorkouts] = useState<WorkoutWithSets[]>([]);
+  const [plannedType, setPlannedType] = useState<string>('Rest');
+  const [workoutDone, setWorkoutDone] = useState(false);
   const [foodCount, setFoodCount] = useState(0);
   const [goalsVisible, setGoalsVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
@@ -45,18 +42,17 @@ export default function HomeScreen() {
   const dateStr = toDateString(date);
 
   const load = useCallback(async () => {
-    const [m, t, ws, fl] = await Promise.all([
+    const [m, t, planned, done, fl] = await Promise.all([
       getDailyMacros(dateStr),
       getTargets(),
-      getWorkoutsForDate(dateStr),
+      getPlannedType(dateStr),
+      isDone(dateStr),
       getFoodLogForDate(dateStr),
     ]);
-    const withSets = await Promise.all(
-      ws.map(async w => ({ ...w, sets: await getSetsForWorkout(w.id) }))
-    );
     setMacros(m);
     setTargetsState(t);
-    setWorkouts(withSets);
+    setPlannedType(planned);
+    setWorkoutDone(done);
     setFoodCount(fl.length);
   }, [dateStr]);
 
@@ -84,30 +80,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
-      {/* Date navigator */}
-      <View style={s.dateRow}>
-        <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}>
-          <Text style={s.arrow}>‹</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowPicker(true)}>
-          <Text style={s.dateLabel}>
-            {isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}>
-          <Text style={s.arrow}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {showPicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display="spinner"
-          maximumDate={new Date()}
-          onChange={(_, d) => { setShowPicker(false); if (d) setDate(d); }}
-        />
-      )}
+      <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
 
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Calorie card — tap for full nutrient breakdown */}
@@ -125,25 +98,22 @@ export default function HomeScreen() {
           <Text style={s.detailLink}>View all nutrients ›</Text>
         </TouchableOpacity>
 
-        {/* Workout card */}
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Workout</Text>
-          {workouts.length === 0 ? (
-            <Text style={s.empty}>No workout logged — go to Workout tab to add one.</Text>
-          ) : (
-            workouts.map(w => (
-              <View key={w.id} style={s.workoutBlock}>
-                {w.name ? <Text style={s.workoutName}>{w.name}</Text> : null}
-                {w.sets.map(set => (
-                  <Text key={set.id} style={s.setLine}>
-                    {`Set ${set.set_number}  ${set.exercise}${set.weight_kg != null ? `  ${set.weight_kg} kg` : ''}${set.reps != null ? `  ×${set.reps}` : ''}`}
-                  </Text>
-                ))}
-                {w.sets.length === 0 && <Text style={s.empty}>No sets logged.</Text>}
+        {/* Workout card — only on training days; shows done / not-done status */}
+        {plannedType !== 'Rest' && (
+          <View style={s.card}>
+            <View style={s.workoutRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>Workout</Text>
+                <Text style={s.workoutType}>{plannedType}</Text>
               </View>
-            ))
-          )}
-        </View>
+              <View style={[s.statusBadge, workoutDone && s.statusBadgeDone]}>
+                <Text style={[s.statusText, workoutDone && s.statusTextDone]}>
+                  {workoutDone ? '✓ Done' : 'Not done yet'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Backup */}
         <TouchableOpacity style={s.backupBtn} onPress={handleBackup} disabled={backingUp}>
@@ -334,9 +304,6 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   scroll: { padding: 16, gap: 16 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
-  arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
-  dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
   card: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 16 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   cardTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -359,9 +326,12 @@ const s = StyleSheet.create({
   macroSub: { fontSize: 12, color: '#999', marginTop: 4 },
   macroOver: { color: '#e6a100', fontWeight: '600' },
   empty: { fontSize: 13, color: '#aaa', fontStyle: 'italic', marginTop: 4 },
-  workoutBlock: { marginBottom: 12 },
-  workoutName: { fontSize: 15, fontWeight: '600', color: '#333', marginBottom: 4 },
-  setLine: { fontSize: 14, color: '#555', paddingVertical: 2 },
+  workoutRow: { flexDirection: 'row', alignItems: 'center' },
+  workoutType: { fontSize: 18, fontWeight: '800', color: '#111', marginTop: 4 },
+  statusBadge: { borderWidth: 1.5, borderColor: '#bbb', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
+  statusBadgeDone: { backgroundColor: '#1a9e54', borderColor: '#1a9e54' },
+  statusText: { fontSize: 14, fontWeight: '700', color: '#999' },
+  statusTextDone: { color: '#fff' },
   backupBtn: { alignItems: 'center', paddingVertical: 12 },
   backupText: { fontSize: 14, color: '#007aff', fontWeight: '600' },
   // modal
