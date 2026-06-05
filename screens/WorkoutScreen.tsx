@@ -213,7 +213,8 @@ export default function WorkoutScreen() {
     setRestKey(null);
   }
 
-  // Green button: save the set, then (re)start the 3:00 rest countdown on it.
+  // Green button: save the set, (re)start the 3:00 rest countdown, then collapse
+  // this set's wheels and open the next uncommitted set so logging flows along.
   async function handleConfirmSet(exercise: string, setNo: number) {
     await commitCell(exercise, setNo);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -224,6 +225,15 @@ export default function WorkoutScreen() {
     setRestEndsAt(Date.now() + REST_SECONDS * 1000);
     setNowTick(Date.now());
     notifId.current = await scheduleRestDone(REST_SECONDS);
+
+    // Advance: first set in this exercise that's still unlogged (the one we just
+    // confirmed counts as committed even though setCommitted is async). None left
+    // → collapse all wheels.
+    let next = 0;
+    for (let n = 1; n <= SETS_PER_EXERCISE; n++) {
+      if (n !== setNo && !committed.has(cellKey(exercise, n))) { next = n; break; }
+    }
+    setOpenSet(next);
   }
 
   // Trash button: un-log a confirmed set — remove the saved row, mark it not
