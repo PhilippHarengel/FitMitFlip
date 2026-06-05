@@ -12,7 +12,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, type Theme } from './theme';
 
 const Tab = createBottomTabNavigator();
-const HomeStack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator();
 
 // Filled icon when active, outline when inactive.
 function icon(active: keyof typeof Ionicons.glyphMap, inactive: keyof typeof Ionicons.glyphMap) {
@@ -21,24 +21,35 @@ function icon(active: keyof typeof Ionicons.glyphMap, inactive: keyof typeof Ion
   );
 }
 
-// Home tab is wrapped in a native-stack so it gets a real iOS large title that
-// collapses on scroll. Workout/Food stay header-less bottom-tab screens until
-// PR2 reskins them.
+// Shared native-stack header options → real iOS large titles that collapse on scroll.
+function largeTitleOptions(t: Theme) {
+  return {
+    headerLargeTitle: true,
+    headerStyle: { backgroundColor: t.colors.bgGrouped },
+    headerLargeTitleStyle: { color: t.colors.label },
+    headerTitleStyle: { color: t.colors.label },
+    headerTintColor: t.colors.accent,
+    headerShadowVisible: false,
+  };
+}
+
+// A tab wrapped in a native-stack so it gets a large title. (Workout is not yet
+// wrapped — it keeps its own SafeAreaView until its PR2 conversion.)
 function HomeStackScreen() {
   const t = useTheme();
   return (
-    <HomeStack.Navigator
-      screenOptions={{
-        headerLargeTitle: true,
-        headerStyle: { backgroundColor: t.colors.bgGrouped },
-        headerLargeTitleStyle: { color: t.colors.label },
-        headerTitleStyle: { color: t.colors.label },
-        headerTintColor: t.colors.accent,
-        headerShadowVisible: false,
-      }}
-    >
-      <HomeStack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
-    </HomeStack.Navigator>
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
+    </Stack.Navigator>
+  );
+}
+
+function FoodStackScreen() {
+  const t = useTheme();
+  return (
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="FoodMain" component={FoodScreen} options={{ title: 'Food' }} />
+    </Stack.Navigator>
   );
 }
 
@@ -88,7 +99,7 @@ function AppInner() {
           />
           <Tab.Screen
             name="Food"
-            component={FoodScreen}
+            component={FoodStackScreen}
             options={{ tabBarIcon: icon('nutrition', 'nutrition-outline') }}
           />
         </Tab.Navigator>
