@@ -49,9 +49,16 @@ npx expo run:ios --device --configuration Release
 3. Check **Automatically manage signing** and pick your **Personal Team**.
 4. Re-run the command above.
 
-**First launch on the phone:** iOS will block an untrusted developer. Go to
-**Settings → General → VPN & Device Management**, tap your Apple ID, and
-**Trust** it. Then open the app.
+**First launch on the phone:** the command will finish with a "failed to
+launch ... profile has not been explicitly trusted" error. That is expected —
+the app is already installed, iOS just won't open it until you trust the
+developer. Go to **Settings → General → VPN & Device Management**, tap
+**Apple Development: <your Apple ID>**, and **Trust** it. Then tap the
+FitMitFlip icon on the home screen.
+
+(Note: `expo-notifications` would normally add a Push Notifications entitlement
+that a free Apple account can't sign. `plugins/withoutPushEntitlement.js` strips
+it on every build. The rest-timer uses local notifications, which still work.)
 
 ## After ~7 days
 
