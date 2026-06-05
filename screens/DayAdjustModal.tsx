@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { Sheet, Chip } from '../components/ui';
+import { useTheme } from '../theme';
 import { clearOverride, getPlannedType, setOverride, toDateString } from '../db/queries';
 import { WORKOUT_TYPES } from '../db/workoutTemplates';
 
@@ -26,6 +28,7 @@ export default function DayAdjustModal({ date, currentType, onClose, onChanged }
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const t = useTheme();
   const [others, setOthers] = useState<{ date: string; type: string }[]>([]);
 
   const load = useCallback(async () => {
@@ -64,63 +67,34 @@ export default function DayAdjustModal({ date, currentType, onClose, onChanged }
     return `${WD[new Date(y, m - 1, da).getDay()]} ${String(da).padStart(2, '0')}.${String(m).padStart(2, '0')}`;
   }
 
+  const sectionStyle = { fontSize: 13, fontWeight: '700' as const, color: t.colors.secondaryLabel, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: t.spacing.sm };
+
   return (
-    <Modal visible={date != null} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <SafeAreaView style={s.safe}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={onClose}><Text style={s.cancel}>Cancel</Text></TouchableOpacity>
-          <Text style={s.title}>Adjust this day</Text>
-          <View style={{ width: 56 }} />
-        </View>
-        <ScrollView contentContainerStyle={s.body}>
-          <Text style={s.section}>Set this day to</Text>
-          <View style={s.chips}>
-            {WORKOUT_TYPES.map(type => {
-              const active = type === currentType;
-              return (
-                <TouchableOpacity key={type} style={[s.chip, active && s.chipActive]} onPress={() => setType(type)}>
-                  <Text style={[s.chipText, active && s.chipTextActive]}>{type}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+    <Sheet visible={date != null} title="Adjust this day" onClose={onClose} leftLabel="Cancel">
+      <Text style={sectionStyle}>Set this day to</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.sm }}>
+        {WORKOUT_TYPES.map(type => (
+          <Chip key={type} label={type} active={type === currentType} onPress={() => setType(type)} />
+        ))}
+      </View>
 
-          <Text style={s.section}>Or swap with another day this week</Text>
-          {others.map(o => (
-            <TouchableOpacity key={o.date} style={s.swapRow} onPress={() => swapWith(o)}>
-              <Text style={s.swapDay}>{label(o.date)}</Text>
-              <Text style={s.swapType}>{o.type}</Text>
-              <Text style={s.swapArrow}>⇄</Text>
-            </TouchableOpacity>
-          ))}
+      <Text style={sectionStyle}>Or swap with another day this week</Text>
+      {others.map(o => (
+        <TouchableOpacity
+          key={o.date}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: t.colors.card, borderRadius: t.radius.control, padding: t.spacing.md, gap: t.spacing.md }}
+          onPress={() => swapWith(o)}
+        >
+          <Text style={{ width: 80, fontSize: 14, color: t.colors.label, fontWeight: '600' }}>{label(o.date)}</Text>
+          <Text style={{ flex: 1, fontSize: 14, color: t.colors.secondaryLabel }}>{o.type}</Text>
+          <Text style={{ fontSize: 18, color: t.colors.accent }}>⇄</Text>
+        </TouchableOpacity>
+      ))}
 
-          <TouchableOpacity style={s.resetBtn} onPress={reset}>
-            <Text style={s.resetText}>Reset to weekly plan</Text>
-          </TouchableOpacity>
-          <Text style={s.note}>Changes apply to this week only and reset next week.</Text>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+      <TouchableOpacity style={{ padding: t.spacing.md, alignItems: 'center', marginTop: t.spacing.sm }} onPress={reset}>
+        <Text style={{ fontSize: 14, color: t.colors.destructive }}>Reset to weekly plan</Text>
+      </TouchableOpacity>
+      <Text style={{ fontSize: 12, color: t.colors.secondaryLabel, textAlign: 'center' }}>Changes apply to this week only and reset next week.</Text>
+    </Sheet>
   );
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ddd' },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#111' },
-  cancel: { fontSize: 15, color: '#666', width: 56 },
-  body: { padding: 16, gap: 10, paddingBottom: 48 },
-  section: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#ddd', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 8 },
-  chipActive: { backgroundColor: '#111', borderColor: '#111' },
-  chipText: { fontSize: 14, color: '#555' },
-  chipTextActive: { color: '#fff', fontWeight: '600' },
-  swapRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f8f8', borderRadius: 10, padding: 12, gap: 10 },
-  swapDay: { width: 80, fontSize: 14, color: '#222', fontWeight: '600' },
-  swapType: { flex: 1, fontSize: 14, color: '#555' },
-  swapArrow: { fontSize: 18, color: '#007aff' },
-  resetBtn: { padding: 12, alignItems: 'center', marginTop: 8 },
-  resetText: { fontSize: 14, color: '#e00' },
-  note: { fontSize: 12, color: '#999', textAlign: 'center' },
-});
