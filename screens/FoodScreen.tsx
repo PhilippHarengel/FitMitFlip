@@ -13,9 +13,9 @@ import {
   View,
   ActivityIndicator,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
+import DateNavigator from '../components/DateNavigator';
 import { lookupBarcode, searchByName, type ProductResult } from '../api/openFoodFacts';
 import {
   deleteFoodLogEntry,
@@ -168,7 +168,6 @@ function ServingModal({ visible, product, onClose, onConfirm }: ServingProps) {
 
 export default function FoodScreen() {
   const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [foodLog, setFoodLog] = useState<(FoodLogEntry & Food)[]>([]);
 
   const [query, setQuery] = useState('');
@@ -190,7 +189,6 @@ export default function FoodScreen() {
   const [servingProduct, setServingProduct] = useState<PendingFood | null>(null);
 
   const dateStr = toDateString(date);
-  const isToday = dateStr === today();
 
   const load = useCallback(async () => {
     const fl = await getFoodLogForDate(dateStr);
@@ -295,28 +293,7 @@ export default function FoodScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* Date navigator */}
-        <View style={s.dateRow}>
-          <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}>
-            <Text style={s.arrow}>‹</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-            <Text style={s.dateLabel}>{isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}>
-            <Text style={s.arrow}>›</Text>
-          </TouchableOpacity>
-        </View>
-
-        {showDatePicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="spinner"
-            maximumDate={new Date()}
-            onChange={(_, d) => { setShowDatePicker(false); if (d) setDate(d); }}
-          />
-        )}
+        <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
 
         {/* Search bar + scan button */}
         <View style={s.searchRow}>
@@ -417,9 +394,6 @@ export default function FoodScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   scroll: { padding: 16, gap: 8, paddingBottom: 40 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
-  arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
-  dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
   searchRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 8 },
   searchInput: { flex: 1, backgroundColor: '#f2f2f2', borderRadius: 10, padding: 10, fontSize: 15 },
   scanBtn: { backgroundColor: '#111', borderRadius: 10, width: 44, alignItems: 'center', justifyContent: 'center' },

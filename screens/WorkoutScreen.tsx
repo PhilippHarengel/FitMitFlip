@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -19,6 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import ExerciseHistoryModal from './ExerciseHistoryModal';
 import WeeklyPlanModal from './WeeklyPlanModal';
 import DayAdjustModal from './DayAdjustModal';
+import DateNavigator from '../components/DateNavigator';
 import {
   createWorkout,
   deleteWorkout,
@@ -53,7 +53,6 @@ const DONE_FLASH_MS = 3000; // how long the "Go!" cue lingers after 0:00
 
 export default function WorkoutScreen() {
   const [date, setDate] = useState(new Date());
-  const [showPicker, setShowPicker] = useState(false);
   const [plannedType, setPlannedType] = useState<string>('Rest');
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});
@@ -273,29 +272,7 @@ export default function WorkoutScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* Date navigator */}
-        <View style={s.dateRow}>
-          <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}>
-            <Text style={s.arrow}>‹</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowPicker(true)}>
-            <Text style={s.dateLabel}>
-              {isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}>
-            <Text style={s.arrow}>›</Text>
-          </TouchableOpacity>
-        </View>
-
-        {showPicker && (
-          <DateTimePicker
-            value={date}
-            mode="date"
-            display="spinner"
-            onChange={(_, d) => { setShowPicker(false); if (d) setDate(d); }}
-          />
-        )}
+        <DateNavigator date={date} onChange={setDate} />
 
         {/* Plan header — always shown */}
         <View style={s.planHeader}>
@@ -455,9 +432,6 @@ export default function WorkoutScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   scroll: { padding: 16, gap: 12, paddingBottom: 48 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
-  arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
-  dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
   planHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
   planDay: { fontSize: 13, color: '#888', fontWeight: '600' },
   planType: { fontSize: 22, fontWeight: '800', color: '#111' },

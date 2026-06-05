@@ -10,8 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
+import DateNavigator from '../components/DateNavigator';
 import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
@@ -29,7 +29,6 @@ const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat
 
 export default function HomeScreen() {
   const [date, setDate] = useState(new Date());
-  const [showPicker, setShowPicker] = useState(false);
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [targets, setTargetsState] = useState<Targets>(EMPTY_TARGETS);
   const [plannedType, setPlannedType] = useState<string>('Rest');
@@ -80,30 +79,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={s.safe}>
-      {/* Date navigator */}
-      <View style={s.dateRow}>
-        <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}>
-          <Text style={s.arrow}>‹</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowPicker(true)}>
-          <Text style={s.dateLabel}>
-            {isToday ? 'Today' : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}>
-          <Text style={s.arrow}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {showPicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display="spinner"
-          maximumDate={new Date()}
-          onChange={(_, d) => { setShowPicker(false); if (d) setDate(d); }}
-        />
-      )}
+      <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
 
       <ScrollView contentContainerStyle={s.scroll}>
         {/* Calorie card — tap for full nutrient breakdown */}
@@ -327,9 +303,6 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   scroll: { padding: 16, gap: 16 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
-  arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
-  dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
   card: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 16 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   cardTitle: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
