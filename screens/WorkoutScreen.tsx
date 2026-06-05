@@ -19,6 +19,7 @@ import ExerciseHistoryModal from './ExerciseHistoryModal';
 import WeeklyPlanModal from './WeeklyPlanModal';
 import DayAdjustModal from './DayAdjustModal';
 import DateNavigator from '../components/DateNavigator';
+import { useSelectedDate } from '../components/DateContext';
 import {
   createWorkout,
   deleteWorkout,
@@ -52,7 +53,7 @@ const REST_SECONDS = 180; // 3 min rest between sets
 const DONE_FLASH_MS = 3000; // how long the "Go!" cue lingers after 0:00
 
 export default function WorkoutScreen() {
-  const [date, setDate] = useState(new Date());
+  const { date, setDate } = useSelectedDate();
   const [plannedType, setPlannedType] = useState<string>('Rest');
   const [workoutId, setWorkoutId] = useState<number | null>(null);
   const [cells, setCells] = useState<Record<string, Cell>>({});

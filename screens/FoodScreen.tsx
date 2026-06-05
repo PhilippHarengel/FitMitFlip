@@ -16,6 +16,7 @@ import {
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
 import DateNavigator from '../components/DateNavigator';
+import { useSelectedDate } from '../components/DateContext';
 import { lookupBarcode, searchByName, type ProductResult } from '../api/openFoodFacts';
 import {
   deleteFoodLogEntry,
@@ -167,7 +168,7 @@ function ServingModal({ visible, product, onClose, onConfirm }: ServingProps) {
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function FoodScreen() {
-  const [date, setDate] = useState(new Date());
+  const { date, setDate } = useSelectedDate();
   const [foodLog, setFoodLog] = useState<(FoodLogEntry & Food)[]>([]);
 
   const [query, setQuery] = useState('');

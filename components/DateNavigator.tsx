@@ -60,6 +60,14 @@ export default function DateNavigator({
       <TouchableOpacity onPress={() => step(1)}>
         <Text style={s.arrow}>›</Text>
       </TouchableOpacity>
+
+      {/* Jump back to today — only shown when viewing another day. Absolutely
+          positioned so it doesn't shift the centered date. */}
+      {!isToday && (
+        <TouchableOpacity style={s.todayBtn} onPress={() => onChange(new Date())} activeOpacity={0.7}>
+          <Text style={s.todayText}>Today</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -68,4 +76,6 @@ const s = StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 20 },
   arrow: { fontSize: 28, color: '#333', paddingHorizontal: 8 },
   dateLabel: { fontSize: 17, fontWeight: '600', color: '#111' },
+  todayBtn: { position: 'absolute', right: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: '#eee' },
+  todayText: { fontSize: 13, fontWeight: '700', color: '#007aff' },
 });

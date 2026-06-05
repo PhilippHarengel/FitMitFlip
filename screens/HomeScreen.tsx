@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import DateNavigator from '../components/DateNavigator';
+import { useSelectedDate } from '../components/DateContext';
 import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
@@ -28,7 +29,7 @@ import {
 const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat_g: null };
 
 export default function HomeScreen() {
-  const [date, setDate] = useState(new Date());
+  const { date, setDate } = useSelectedDate();
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
   const [targets, setTargetsState] = useState<Targets>(EMPTY_TARGETS);
   const [plannedType, setPlannedType] = useState<string>('Rest');
