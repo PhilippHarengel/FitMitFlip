@@ -26,7 +26,9 @@
     "plugins": [
       "expo-sqlite",
       "@react-native-community/datetimepicker",
-      "./plugins/withoutPushEntitlement"
+      "./plugins/withoutPushEntitlement",
+      "expo-font",
+      "expo-asset"
     ]
   }
 }

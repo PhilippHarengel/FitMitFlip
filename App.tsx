@@ -5,6 +5,7 @@ import HomeScreen from './screens/HomeScreen';
 import WorkoutScreen from './screens/WorkoutScreen';
 import FoodScreen from './screens/FoodScreen';
 import { DateProvider } from './components/DateContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Tab = createBottomTabNavigator();
 
@@ -17,6 +18,7 @@ function icon(active: keyof typeof Ionicons.glyphMap, inactive: keyof typeof Ion
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <NavigationContainer>
       <DateProvider>
       <Tab.Navigator
@@ -46,5 +48,6 @@ export default function App() {
       </Tab.Navigator>
       </DateProvider>
     </NavigationContainer>
+    </ErrorBoundary>
   );
 }
