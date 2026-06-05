@@ -33,13 +33,21 @@ function largeTitleOptions(t: Theme) {
   };
 }
 
-// A tab wrapped in a native-stack so it gets a large title. (Workout is not yet
-// wrapped — it keeps its own SafeAreaView until its PR2 conversion.)
+// Each tab is wrapped in a native-stack so it gets a real iOS large title.
 function HomeStackScreen() {
   const t = useTheme();
   return (
     <Stack.Navigator screenOptions={largeTitleOptions(t)}>
       <Stack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
+    </Stack.Navigator>
+  );
+}
+
+function WorkoutStackScreen() {
+  const t = useTheme();
+  return (
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="WorkoutMain" component={WorkoutScreen} options={{ title: 'Workout' }} />
     </Stack.Navigator>
   );
 }
@@ -89,7 +97,7 @@ function AppInner() {
         >
           <Tab.Screen
             name="Workout"
-            component={WorkoutScreen}
+            component={WorkoutStackScreen}
             options={{ tabBarIcon: icon('barbell', 'barbell-outline') }}
           />
           <Tab.Screen

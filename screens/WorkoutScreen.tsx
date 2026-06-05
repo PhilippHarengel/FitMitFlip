@@ -1,17 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { scheduleRestDone, cancelRest } from '../lib/restNotify';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,6 +9,8 @@ import WeeklyPlanModal from './WeeklyPlanModal';
 import DayAdjustModal from './DayAdjustModal';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
+import { Screen, SwipeRow, Icon } from '../components/ui';
+import { useTheme } from '../theme';
 import {
   createWorkout,
   deleteWorkout,
@@ -53,6 +44,7 @@ const REST_SECONDS = 180; // 3 min rest between sets
 const DONE_FLASH_MS = 3000; // how long the "Go!" cue lingers after 0:00
 
 export default function WorkoutScreen() {
+  const t = useTheme();
   const { date, setDate } = useSelectedDate();
   const [plannedType, setPlannedType] = useState<string>('Rest');
   const [workoutId, setWorkoutId] = useState<number | null>(null);
@@ -113,11 +105,11 @@ export default function WorkoutScreen() {
       const saved = new Set<string>();
       if (existing) {
         const sets = await getSetsForWorkout(existing.id);
-        for (const s of sets) {
-          const k = cellKey(s.exercise, s.set_number);
+        for (const sset of sets) {
+          const k = cellKey(sset.exercise, sset.set_number);
           next[k] = {
-            weight: s.weight_kg != null ? String(s.weight_kg) : '',
-            reps: s.reps != null ? String(s.reps) : '',
+            weight: sset.weight_kg != null ? String(sset.weight_kg) : '',
+            reps: sset.reps != null ? String(sset.reps) : '',
           };
           saved.add(k);
         }
@@ -226,9 +218,7 @@ export default function WorkoutScreen() {
     setNowTick(Date.now());
     notifId.current = await scheduleRestDone(REST_SECONDS);
 
-    // Advance: first set in this exercise that's still unlogged (the one we just
-    // confirmed counts as committed even though setCommitted is async). None left
-    // → collapse all wheels.
+    // Advance: first set in this exercise that's still unlogged.
     let next = 0;
     for (let n = 1; n <= SETS_PER_EXERCISE; n++) {
       if (n !== setNo && !committed.has(cellKey(exercise, n))) { next = n; break; }
@@ -236,8 +226,8 @@ export default function WorkoutScreen() {
     setOpenSet(next);
   }
 
-  // Trash button: un-log a confirmed set — remove the saved row, mark it not
-  // finished, reset its wheels to last session's numbers, stop its timer.
+  // Un-log a confirmed set — remove the saved row, mark it not finished, reset
+  // its wheels to last session's numbers, stop its timer.
   async function handleDeleteSet(exercise: string, setNo: number) {
     const key = cellKey(exercise, setNo);
     if (restKey === key) stopRest();
@@ -252,6 +242,51 @@ export default function WorkoutScreen() {
     setDoneFlashKey(prev => (prev === key ? null : prev));
     setDoneFlag(await isDone(dateStr));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }
+
+  // Clear every committed set for one exercise (from the exercise context menu).
+  async function clearExercise(exercise: string) {
+    if (workoutId == null) return;
+    for (let n = 1; n <= SETS_PER_EXERCISE; n++) {
+      const key = cellKey(exercise, n);
+      if (committed.has(key)) {
+        if (restKey === key) stopRest();
+        try { await deleteSetEntry(workoutId, exercise, n); } catch { /* keep going */ }
+      }
+    }
+    setCommitted(prev => { const n = new Set(prev); for (let i = 1; i <= SETS_PER_EXERCISE; i++) n.delete(cellKey(exercise, i)); return n; });
+    setCells(prev => { const n = { ...prev }; for (let i = 1; i <= SETS_PER_EXERCISE; i++) delete n[cellKey(exercise, i)]; return n; });
+    setDoneFlag(await isDone(dateStr));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+  }
+
+  // Long-press an exercise → native action menu. iOS uses ActionSheetIOS; Android
+  // falls back to Alert (ActionSheetIOS is iOS-only). Both work in Expo Go.
+  function showExerciseMenu(exercise: string) {
+    const filled = filledCount(exercise);
+    const actions: { label: string; destructive?: boolean; run: () => void }[] = [
+      { label: 'View history', run: () => setHistoryExercise(exercise) },
+    ];
+    if (filled > 0) actions.push({ label: 'Clear logged sets', destructive: true, run: () => clearExercise(exercise) });
+
+    if (Platform.OS === 'ios') {
+      const options = [...actions.map(a => a.label), 'Cancel'];
+      const destructiveButtonIndex = actions.findIndex(a => a.destructive);
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: exercise,
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: destructiveButtonIndex >= 0 ? destructiveButtonIndex : undefined,
+        },
+        i => { if (i < actions.length) actions[i].run(); }
+      );
+    } else {
+      Alert.alert(exercise, undefined, [
+        ...actions.map(a => ({ text: a.label, style: (a.destructive ? 'destructive' : 'default') as 'destructive' | 'default', onPress: a.run })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+    }
   }
 
   async function toggleDone() {
@@ -271,152 +306,154 @@ export default function WorkoutScreen() {
   const weekdayLabel = WD[date.getDay()];
 
   return (
-    <SafeAreaView style={s.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <DateNavigator date={date} onChange={setDate} />
+    <Screen>
+      <DateNavigator date={date} onChange={setDate} />
 
-        {/* Plan header — always shown */}
-        <View style={s.planHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.planDay}>{weekdayLabel}{isToday ? ' · Today' : ''}</Text>
-            <Text style={s.planType}>{plannedType}</Text>
-          </View>
-          <View style={s.planActions}>
-            <TouchableOpacity onPress={() => setAdjustVisible(true)}><Text style={s.headerBtn}>Change</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setWeeklyVisible(true)}><Text style={s.headerBtn}>Plan</Text></TouchableOpacity>
-          </View>
+      {/* Plan header */}
+      <View style={L.planHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, fontWeight: '600' }}>{weekdayLabel}{isToday ? ' · Today' : ''}</Text>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: t.colors.label }}>{plannedType}</Text>
         </View>
+        <View style={{ flexDirection: 'row', gap: t.spacing.lg }}>
+          <TouchableOpacity onPress={() => setAdjustVisible(true)}><Text style={{ fontSize: 15, color: t.colors.accent, fontWeight: '600' }}>Change</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setWeeklyVisible(true)}><Text style={{ fontSize: 15, color: t.colors.accent, fontWeight: '600' }}>Plan</Text></TouchableOpacity>
+        </View>
+      </View>
 
-        {isStrength ? (
-          <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-            {SPLITS[plannedType].map(exercise => {
-              const isOpen = openExercise === exercise;
-              const filled = filledCount(exercise);
-              return (
-                <View key={exercise} style={s.exerciseCard}>
-                  <View style={s.exerciseHeader}>
-                    <TouchableOpacity
-                      style={s.exerciseToggle}
-                      activeOpacity={0.6}
-                      onPress={() => { setOpenExercise(prev => (prev === exercise ? null : exercise)); setOpenSet(0); }}
-                    >
-                      <Text style={s.exerciseName}>{exercise}</Text>
-                      <Text style={[s.exerciseBadge, filled > 0 && s.exerciseBadgeDone]}>{filled}/{SETS_PER_EXERCISE}</Text>
-                      <Text style={s.chevron}>{isOpen ? '▾' : '▸'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={s.historyBtn} onPress={() => setHistoryExercise(exercise)}>
-                      <Ionicons name="stats-chart-outline" size={18} color="#007aff" />
-                    </TouchableOpacity>
-                  </View>
+      {isStrength ? (
+        <>
+          {SPLITS[plannedType].map(exercise => {
+            const isOpen = openExercise === exercise;
+            const filled = filledCount(exercise);
+            return (
+              <View key={exercise} style={{ backgroundColor: t.colors.card, borderRadius: t.radius.card, padding: t.spacing.md, overflow: 'hidden' }}>
+                <View style={L.exerciseHeader}>
+                  <Pressable
+                    style={L.exerciseToggle}
+                    onPress={() => { setOpenExercise(prev => (prev === exercise ? null : exercise)); setOpenSet(0); }}
+                    onLongPress={() => showExerciseMenu(exercise)}
+                  >
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: t.colors.label, flex: 1 }}>{exercise}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: filled > 0 ? t.colors.label : t.colors.secondaryLabel }}>{filled}/{SETS_PER_EXERCISE}</Text>
+                    <Icon name={isOpen ? 'chevron.down' : 'chevron.right'} color={t.colors.secondaryLabel} size={13} />
+                  </Pressable>
+                  <TouchableOpacity style={{ paddingLeft: t.spacing.md, paddingVertical: 2 }} onPress={() => setHistoryExercise(exercise)}>
+                    <Icon name="chart.xyaxis.line" color={t.colors.accent} size={20} />
+                  </TouchableOpacity>
+                </View>
 
-                  {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
-                    const key = cellKey(exercise, setNo);
-                    const repsOnly = isRepsOnly(exercise);
-                    const sel = resolveCell(exercise, setNo);
-                    const resting = restKey === key && restEndsAt != null;
-                    const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
-                    const flashing = doneFlashKey === key;
-                    const setOpen = openSet === setNo;
-                    const isCommitted = committed.has(key);
-                    const summary = repsOnly ? `${sel.reps} reps` : `${sel.weight} kg × ${sel.reps}`;
-                    return (
-                      <View key={setNo} style={s.setBlock}>
-                        <View style={s.setHeader}>
-                          <TouchableOpacity
-                            style={s.setHeaderTap}
-                            activeOpacity={0.6}
-                            onPress={() => setOpenSet(prev => (prev === setNo ? 0 : setNo))}
-                          >
-                            <Text style={s.setNum}>Set {setNo}</Text>
-                            <Text style={s.setSummary}>{summary}</Text>
-                            <Text style={s.chevron}>{setOpen ? '▾' : '▸'}</Text>
-                          </TouchableOpacity>
-                          {isCommitted && (
-                            <TouchableOpacity style={s.deleteBtn} onPress={() => handleDeleteSet(exercise, setNo)} activeOpacity={0.7}>
-                              <Ionicons name="trash-outline" size={18} color="#e00" />
-                            </TouchableOpacity>
-                          )}
-                          {resting ? (
-                            <TouchableOpacity style={[s.confirmBtn, s.restBtn]} onPress={stopRest} activeOpacity={0.7}>
-                              <Text style={s.restCountdown}>
-                                {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
-                              </Text>
-                            </TouchableOpacity>
-                          ) : flashing ? (
-                            <View style={[s.confirmBtn, s.goBtn]}>
-                              <Text style={s.goText}>Go!</Text>
-                            </View>
-                          ) : (
-                            <TouchableOpacity style={s.confirmBtn} onPress={() => handleConfirmSet(exercise, setNo)} activeOpacity={0.7}>
-                              <Ionicons name="checkmark" size={22} color="#fff" />
-                            </TouchableOpacity>
-                          )}
+                {isOpen && Array.from({ length: SETS_PER_EXERCISE }, (_, i) => i + 1).map(setNo => {
+                  const key = cellKey(exercise, setNo);
+                  const repsOnly = isRepsOnly(exercise);
+                  const sel = resolveCell(exercise, setNo);
+                  const resting = restKey === key && restEndsAt != null;
+                  const remaining = resting ? Math.max(0, Math.ceil((restEndsAt! - nowTick) / 1000)) : 0;
+                  const flashing = doneFlashKey === key;
+                  const setOpen = openSet === setNo;
+                  const isCommitted = committed.has(key);
+                  const summary = repsOnly ? `${sel.reps} reps` : `${sel.weight} kg × ${sel.reps}`;
+
+                  const header = (
+                    <View style={[L.setHeader, { backgroundColor: t.colors.card }]}>
+                      <Pressable style={L.setHeaderTap} onPress={() => setOpenSet(prev => (prev === setNo ? 0 : setNo))}>
+                        <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, fontWeight: '600' }}>Set {setNo}</Text>
+                        <Text style={{ flex: 1, fontSize: 14, color: t.colors.label, fontWeight: '600' }}>{summary}</Text>
+                        <Icon name={setOpen ? 'chevron.down' : 'chevron.right'} color={t.colors.secondaryLabel} size={13} />
+                      </Pressable>
+                      {resting ? (
+                        <TouchableOpacity style={[L.actionBtn, { backgroundColor: t.colors.label }]} onPress={stopRest} activeOpacity={0.7}>
+                          <Text style={{ color: t.colors.bg, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+                            {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : flashing ? (
+                        <View style={[L.actionBtn, { backgroundColor: t.colors.success }]}>
+                          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '800' }}>Go!</Text>
                         </View>
-                        {setOpen && (
-                        <View style={s.wheelRow}>
+                      ) : (
+                        <TouchableOpacity style={[L.actionBtn, { backgroundColor: t.colors.success }]} onPress={() => handleConfirmSet(exercise, setNo)} activeOpacity={0.7}>
+                          <Icon name="checkmark" color="#fff" size={20} weight="bold" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+
+                  return (
+                    <View key={setNo} style={[L.setBlock, { borderTopColor: t.colors.separator }]}>
+                      {isCommitted
+                        ? <SwipeRow onDelete={() => handleDeleteSet(exercise, setNo)} deleteLabel="Un-log">{header}</SwipeRow>
+                        : header}
+                      {setOpen && (
+                        <View style={L.wheelRow}>
                           {!repsOnly && (
-                            <View style={s.wheelCol}>
-                              <Text style={s.wheelCap}>kg</Text>
+                            <View style={L.wheelCol}>
+                              <Text style={[L.wheelCap, { color: t.colors.secondaryLabel }]}>kg</Text>
                               <Picker
                                 selectedValue={sel.weight as number}
                                 onValueChange={v => setCell(exercise, setNo, { weight: String(v) })}
-                                style={s.wheel}
-                                itemStyle={s.wheelItem}
+                                style={L.wheel}
+                                itemStyle={{ fontSize: 20, height: 132, color: t.colors.label }}
                               >
-                                {WEIGHT_OPTIONS.map(w => <Picker.Item key={w} label={String(w)} value={w} />)}
+                                {WEIGHT_OPTIONS.map(w => <Picker.Item key={w} label={String(w)} value={w} color={t.colors.label} />)}
                               </Picker>
                             </View>
                           )}
-                          <View style={s.wheelCol}>
-                            <Text style={s.wheelCap}>reps</Text>
+                          <View style={L.wheelCol}>
+                            <Text style={[L.wheelCap, { color: t.colors.secondaryLabel }]}>reps</Text>
                             <Picker
                               selectedValue={sel.reps}
                               onValueChange={v => setCell(exercise, setNo, { reps: String(v) })}
-                              style={s.wheel}
-                              itemStyle={s.wheelItem}
+                              style={L.wheel}
+                              itemStyle={{ fontSize: 20, height: 132, color: t.colors.label }}
                             >
-                              {REPS_OPTIONS.map(r => <Picker.Item key={r} label={String(r)} value={r} />)}
+                              {REPS_OPTIONS.map(r => <Picker.Item key={r} label={String(r)} value={r} color={t.colors.label} />)}
                             </Picker>
                           </View>
                         </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })}
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
 
-            {/* Done — auto once sets are logged, tap to override */}
-            <TouchableOpacity style={[s.doneBadge, done && s.doneBadgeOn]} onPress={toggleDone}>
-              <Text style={[s.doneText, done && s.doneTextOn]}>{done ? '✓ Workout done' : 'Mark workout done'}</Text>
+          {/* Done — auto once sets are logged, tap to override */}
+          <TouchableOpacity
+            style={[L.doneBadge, { borderColor: t.colors.success }, done && { backgroundColor: t.colors.success }]}
+            onPress={toggleDone}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '700', color: done ? '#fff' : t.colors.success }}>
+              {done ? '✓ Workout done' : 'Mark workout done'}
+            </Text>
+          </TouchableOpacity>
+
+          {workoutId != null && (
+            <TouchableOpacity style={{ alignItems: 'center', paddingVertical: t.spacing.sm }} onPress={handleDeleteWorkout}>
+              <Text style={{ fontSize: 13, color: t.colors.destructive }}>Clear logged sets</Text>
             </TouchableOpacity>
-
-            {workoutId != null && (
-              <TouchableOpacity style={s.clearLink} onPress={handleDeleteWorkout}>
-                <Text style={s.clearText}>Clear logged sets</Text>
-              </TouchableOpacity>
-            )}
-          </ScrollView>
-        ) : (
-          <ScrollView contentContainerStyle={s.scroll}>
-            <View style={s.restCard}>
-              <Text style={s.restEmoji}>{plannedType === 'Jogging' ? '🏃' : '😴'}</Text>
-              <Text style={s.restTitle}>{plannedType === 'Jogging' ? 'Jogging day' : 'Rest day'}</Text>
-              <Text style={s.restSub}>
-                {plannedType === 'Jogging'
-                  ? 'Go for your run, then mark it done.'
-                  : 'No training scheduled. Tap Change to train anyway.'}
-              </Text>
-              {plannedType === 'Jogging' && (
-                <TouchableOpacity style={[s.doneBadge, done && s.doneBadgeOn, { marginTop: 16 }]} onPress={toggleDone}>
-                  <Text style={[s.doneText, done && s.doneTextOn]}>{done ? '✓ Done' : 'Mark done'}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </ScrollView>
-        )}
-      </KeyboardAvoidingView>
+          )}
+        </>
+      ) : (
+        <View style={{ backgroundColor: t.colors.card, borderRadius: t.radius.card, padding: 28, alignItems: 'center' }}>
+          <Icon name={plannedType === 'Jogging' ? 'figure.run' : 'moon.zzz.fill'} color={t.colors.secondaryLabel} size={40} />
+          <Text style={{ fontSize: 20, fontWeight: '800', color: t.colors.label, marginTop: t.spacing.sm }}>
+            {plannedType === 'Jogging' ? 'Jogging day' : 'Rest day'}
+          </Text>
+          <Text style={{ fontSize: 14, color: t.colors.secondaryLabel, textAlign: 'center', marginTop: 6 }}>
+            {plannedType === 'Jogging' ? 'Go for your run, then mark it done.' : 'No training scheduled. Tap Change to train anyway.'}
+          </Text>
+          {plannedType === 'Jogging' && (
+            <TouchableOpacity
+              style={[L.doneBadge, { borderColor: t.colors.success, marginTop: t.spacing.lg, alignSelf: 'stretch' }, done && { backgroundColor: t.colors.success }]}
+              onPress={toggleDone}
+            >
+              <Text style={{ fontSize: 15, fontWeight: '700', color: done ? '#fff' : t.colors.success }}>{done ? '✓ Done' : 'Mark done'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <ExerciseHistoryModal exercise={historyExercise} onClose={() => setHistoryExercise(null)} />
       <WeeklyPlanModal visible={weeklyVisible} onClose={() => setWeeklyVisible(false)} onChanged={() => load()} />
@@ -426,53 +463,22 @@ export default function WorkoutScreen() {
         onClose={() => setAdjustVisible(false)}
         onChanged={() => load()}
       />
-    </SafeAreaView>
+    </Screen>
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  scroll: { padding: 16, gap: 12, paddingBottom: 48 },
-  planHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
-  planDay: { fontSize: 13, color: '#888', fontWeight: '600' },
-  planType: { fontSize: 22, fontWeight: '800', color: '#111' },
-  planActions: { flexDirection: 'row', gap: 18 },
-  headerBtn: { fontSize: 14, color: '#007aff', fontWeight: '600' },
-  exerciseCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 14 },
+// Layout-only styles (no colors — those come from theme tokens inline).
+const L = StyleSheet.create({
+  planHeader: { flexDirection: 'row', alignItems: 'center' },
   exerciseHeader: { flexDirection: 'row', alignItems: 'center' },
-  exerciseToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  exerciseName: { fontSize: 15, fontWeight: '600', color: '#222', flex: 1 },
-  historyBtn: { paddingLeft: 14, paddingVertical: 2 },
-  exerciseBadge: { fontSize: 12, fontWeight: '600', color: '#bbb' },
-  exerciseBadgeDone: { color: '#111' },
-  chevron: { fontSize: 14, color: '#999', width: 14, textAlign: 'center' },
-  setBlock: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e8e8e8', paddingTop: 6 },
+  exerciseToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  setBlock: { marginTop: 10, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 6 },
   setHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   setHeaderTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
-  setNum: { fontSize: 13, color: '#999', fontWeight: '600' },
-  setSummary: { flex: 1, fontSize: 14, color: '#222', fontWeight: '600' },
   wheelRow: { flexDirection: 'row', gap: 12 },
   wheelCol: { flex: 1, alignItems: 'center' },
-  wheelCap: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  wheelCap: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   wheel: { width: '100%', height: 132 },
-  // Pin a dark text color: the Workout screen is still light-only (PR2 reskins it),
-  // so without this the wheel inherits the system label color (white in dark mode)
-  // and becomes invisible on the light card.
-  wheelItem: { fontSize: 20, height: 132, color: '#111' },
-  deleteBtn: { width: 44, height: 38, borderRadius: 8, borderWidth: 1, borderColor: '#f1c0c0', alignItems: 'center', justifyContent: 'center' },
-  confirmBtn: { width: 56, height: 38, borderRadius: 8, backgroundColor: '#1a9e54', alignItems: 'center', justifyContent: 'center' },
-  restBtn: { backgroundColor: '#222' },
-  restCountdown: { color: '#fff', fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  goBtn: { backgroundColor: '#1a9e54' },
-  goText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  doneBadge: { borderWidth: 1.5, borderColor: '#1a9e54', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4 },
-  doneBadgeOn: { backgroundColor: '#1a9e54' },
-  doneText: { fontSize: 15, fontWeight: '700', color: '#1a9e54' },
-  doneTextOn: { color: '#fff' },
-  clearLink: { alignItems: 'center', paddingVertical: 8 },
-  clearText: { fontSize: 13, color: '#e00' },
-  restCard: { backgroundColor: '#f8f8f8', borderRadius: 12, padding: 28, alignItems: 'center' },
-  restEmoji: { fontSize: 40 },
-  restTitle: { fontSize: 20, fontWeight: '800', color: '#111', marginTop: 8 },
-  restSub: { fontSize: 14, color: '#888', textAlign: 'center', marginTop: 6 },
+  actionBtn: { minWidth: 56, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  doneBadge: { borderWidth: 1.5, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4 },
 });
