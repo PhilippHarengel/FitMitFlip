@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
-import { Screen, Card, ListSection, ListRow, Button, ProgressBar, Ring, Icon } from '../components/ui';
+import { Screen, Card, ListSection, ListRow, Button, ProgressBar, Ring, Icon, Sheet } from '../components/ui';
 import { useTheme, type Theme } from '../theme';
 import { backupToFile } from '../db/backup';
 import {
@@ -295,19 +295,13 @@ function NutrientDetailModal({ visible, dateLabel, macros, targets, onClose, onE
   visible: boolean; dateLabel: string; macros: DailyMacros; targets: Targets;
   onClose: () => void; onEditGoals: () => void;
 }) {
-  const t = useTheme();
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: t.colors.bgGrouped }}>
-        <ModalHeader theme={t} left="Done" onLeft={onClose} title={`Nutrients — ${dateLabel}`} right="Goals" onRight={onEditGoals} />
-        <ScrollView contentContainerStyle={{ padding: t.spacing.lg, gap: t.spacing.md }}>
-          <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
-          <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
-          <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
-          <MacroProgress label="Fat" unit="g" current={macros.fat_g} target={targets.fat_g} />
-        </ScrollView>
-      </View>
-    </Modal>
+    <Sheet visible={visible} title={`Nutrients — ${dateLabel}`} onClose={onClose} leftLabel="Done" rightLabel="Goals" onRight={onEditGoals}>
+      <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
+      <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
+      <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
+      <MacroProgress label="Fat" unit="g" current={macros.fat_g} target={targets.fat_g} />
+    </Sheet>
   );
 }
 
@@ -378,20 +372,15 @@ function GoalsModal({ visible, initial, onClose, onSave }: {
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: t.colors.bgGrouped }}>
-        <ModalHeader theme={t} left="Cancel" onLeft={onClose} title="Daily Goals" right="Save" onRight={handleSave} />
-        <ScrollView contentContainerStyle={{ padding: t.spacing.lg, gap: t.spacing.md }} keyboardShouldPersistTaps="handled">
-          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: t.spacing.sm }}>
-            Leave a field blank to track that macro without a goal.
-          </Text>
-          <Field theme={t} label="Calories (kcal)" value={kcal} onChange={setKcal} />
-          <Field theme={t} label="Protein (g)" value={protein} onChange={setProtein} />
-          <Field theme={t} label="Carbs (g)" value={carbs} onChange={setCarbs} />
-          <Field theme={t} label="Fat (g)" value={fat} onChange={setFat} />
-        </ScrollView>
-      </View>
-    </Modal>
+    <Sheet visible={visible} title="Daily Goals" onClose={onClose} rightLabel="Save" onRight={handleSave}>
+      <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: t.spacing.sm }}>
+        Leave a field blank to track that macro without a goal.
+      </Text>
+      <Field theme={t} label="Calories (kcal)" value={kcal} onChange={setKcal} />
+      <Field theme={t} label="Protein (g)" value={protein} onChange={setProtein} />
+      <Field theme={t} label="Carbs (g)" value={carbs} onChange={setCarbs} />
+      <Field theme={t} label="Fat (g)" value={fat} onChange={setFat} />
+    </Sheet>
   );
 }
 
@@ -407,25 +396,6 @@ function Field({ theme, label, value, onChange }: { theme: Theme; label: string;
         placeholder="—"
         placeholderTextColor={theme.colors.secondaryLabel}
       />
-    </View>
-  );
-}
-
-// Shared modal header (Cancel/Title/Save). A precursor to PR2's `Sheet` component.
-function ModalHeader({ theme, left, onLeft, title, right, onRight }: {
-  theme: Theme; left: string; onLeft: () => void; title: string; right?: string; onRight?: () => void;
-}) {
-  return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
-      borderBottomWidth: 0.5, borderBottomColor: theme.colors.separator, backgroundColor: theme.colors.bg,
-    }}>
-      <TouchableOpacity onPress={onLeft} hitSlop={8}><Text style={{ fontSize: 17, color: theme.colors.accent }}>{left}</Text></TouchableOpacity>
-      <Text style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: theme.colors.label, marginHorizontal: theme.spacing.sm }} numberOfLines={1}>{title}</Text>
-      {right && onRight
-        ? <TouchableOpacity onPress={onRight} hitSlop={8}><Text style={{ fontSize: 17, fontWeight: '600', color: theme.colors.accent }}>{right}</Text></TouchableOpacity>
-        : <View style={{ width: 50 }} />}
     </View>
   );
 }

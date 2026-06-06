@@ -1,7 +1,11 @@
 export { Screen } from './Screen';
+export { FloatingTabBar, FLOATING_TAB_BAR_HEIGHT } from './FloatingTabBar';
 export { Card } from './Card';
+export { Sheet } from './Sheet';
+export { SwipeRow } from './SwipeRow';
 export { ListSection, ListRow } from './List';
 export { Button } from './Button';
+export { Chip } from './Chip';
 export { ProgressBar } from './ProgressBar';
 export { Ring } from './Ring';
 export { Icon, type IconName } from './Icon';

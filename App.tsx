@@ -1,43 +1,56 @@
 import { NavigationContainer, DefaultTheme, DarkTheme, type Theme as NavTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import HomeScreen from './screens/HomeScreen';
 import WorkoutScreen from './screens/WorkoutScreen';
 import FoodScreen from './screens/FoodScreen';
 import { DateProvider } from './components/DateContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import { FloatingTabBar } from './components/ui';
 import { ThemeProvider, useTheme, type Theme } from './theme';
 
 const Tab = createBottomTabNavigator();
-const HomeStack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator();
 
-// Filled icon when active, outline when inactive.
-function icon(active: keyof typeof Ionicons.glyphMap, inactive: keyof typeof Ionicons.glyphMap) {
-  return ({ color, size, focused }: { color: string; size: number; focused: boolean }) => (
-    <Ionicons name={focused ? active : inactive} size={size} color={color} />
-  );
+// Shared native-stack header options → real iOS large titles that collapse on scroll.
+function largeTitleOptions(t: Theme) {
+  return {
+    headerLargeTitle: true,
+    headerStyle: { backgroundColor: t.colors.bgGrouped },
+    headerLargeTitleStyle: { color: t.colors.label },
+    headerTitleStyle: { color: t.colors.label },
+    headerTintColor: t.colors.accent,
+    headerShadowVisible: false,
+  };
 }
 
-// Home tab is wrapped in a native-stack so it gets a real iOS large title that
-// collapses on scroll. Workout/Food stay header-less bottom-tab screens until
-// PR2 reskins them.
+// Each tab is wrapped in a native-stack so it gets a real iOS large title.
 function HomeStackScreen() {
   const t = useTheme();
   return (
-    <HomeStack.Navigator
-      screenOptions={{
-        headerLargeTitle: true,
-        headerStyle: { backgroundColor: t.colors.bgGrouped },
-        headerLargeTitleStyle: { color: t.colors.label },
-        headerTitleStyle: { color: t.colors.label },
-        headerTintColor: t.colors.accent,
-        headerShadowVisible: false,
-      }}
-    >
-      <HomeStack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
-    </HomeStack.Navigator>
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
+    </Stack.Navigator>
+  );
+}
+
+function WorkoutStackScreen() {
+  const t = useTheme();
+  return (
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="WorkoutMain" component={WorkoutScreen} options={{ title: 'Workout' }} />
+    </Stack.Navigator>
+  );
+}
+
+function FoodStackScreen() {
+  const t = useTheme();
+  return (
+    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
+      <Stack.Screen name="FoodMain" component={FoodScreen} options={{ title: 'Food' }} />
+    </Stack.Navigator>
   );
 }
 
@@ -68,28 +81,12 @@ function AppInner() {
       <DateProvider>
         <Tab.Navigator
           initialRouteName="Home"
-          screenOptions={{
-            headerShown: false,
-            tabBarActiveTintColor: t.colors.accent,
-            tabBarInactiveTintColor: t.colors.tabInactive,
-            tabBarStyle: { backgroundColor: t.colors.bg, borderTopColor: t.colors.separator },
-          }}
+          tabBar={(props) => <FloatingTabBar {...props} />}
+          screenOptions={{ headerShown: false }}
         >
-          <Tab.Screen
-            name="Workout"
-            component={WorkoutScreen}
-            options={{ tabBarIcon: icon('barbell', 'barbell-outline') }}
-          />
-          <Tab.Screen
-            name="Home"
-            component={HomeStackScreen}
-            options={{ tabBarLabel: 'Today', tabBarIcon: icon('home', 'home-outline') }}
-          />
-          <Tab.Screen
-            name="Food"
-            component={FoodScreen}
-            options={{ tabBarIcon: icon('nutrition', 'nutrition-outline') }}
-          />
+          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
+          <Tab.Screen name="Home" component={HomeStackScreen} options={{ tabBarLabel: 'Today' }} />
+          <Tab.Screen name="Food" component={FoodStackScreen} />
         </Tab.Navigator>
       </DateProvider>
     </NavigationContainer>
@@ -98,10 +95,12 @@ function AppInner() {
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AppInner />
-      </ThemeProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <AppInner />
+        </ThemeProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

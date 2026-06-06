@@ -20,6 +20,7 @@ export type Palette = {
   warning: string;       // over target
   destructive: string;   // delete
   tabInactive: string;   // inactive bottom-tab icon
+  tabActive: string;     // active floating-dock tint (indigo, dock-only — not the app accent)
   // Macro ring fills — reuse the system trio, no new hues.
   protein: string;
   carbs: string;
@@ -39,6 +40,7 @@ export const lightColors: Palette = {
   warning: '#E6A100',
   destructive: '#FF3B30',
   tabInactive: '#AAAAAA',
+  tabActive: '#5B3FE8',
   protein: '#007AFF',
   carbs: '#1A9E54',
   fat: '#E6A100',
@@ -57,6 +59,7 @@ export const darkColors: Palette = {
   warning: '#FFD60A',
   destructive: '#FF453A',
   tabInactive: '#8E8E93',
+  tabActive: '#7B61FF',
   protein: '#0A84FF',
   carbs: '#30D158',
   fat: '#FFD60A',

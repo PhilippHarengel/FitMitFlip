@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Sheet, Chip } from '../components/ui';
+import { useTheme } from '../theme';
 import { getScheduleBase, setScheduleDay } from '../db/queries';
 import { WORKOUT_TYPES } from '../db/workoutTemplates';
 
@@ -13,6 +15,7 @@ const DAYS: { dow: number; label: string }[] = [
 export default function WeeklyPlanModal({ visible, onClose, onChanged }: {
   visible: boolean; onClose: () => void; onChanged: () => void;
 }) {
+  const t = useTheme();
   const [base, setBase] = useState<Record<number, string>>({});
 
   useEffect(() => {
@@ -26,48 +29,18 @@ export default function WeeklyPlanModal({ visible, onClose, onChanged }: {
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="formSheet" onRequestClose={onClose}>
-      <SafeAreaView style={s.safe}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={onClose}><Text style={s.done}>Done</Text></TouchableOpacity>
-          <Text style={s.title}>Weekly Plan</Text>
-          <View style={{ width: 44 }} />
+    <Sheet visible={visible} title="Weekly Plan" onClose={onClose} leftLabel="Done">
+      <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>Your recurring plan. Changes here repeat every week.</Text>
+      {DAYS.map(({ dow, label }) => (
+        <View key={dow} style={{ gap: 6 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: t.colors.label }}>{label}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {WORKOUT_TYPES.map(type => (
+              <Chip key={type} label={type} active={base[dow] === type} onPress={() => pick(dow, type)} />
+            ))}
+          </View>
         </View>
-        <ScrollView contentContainerStyle={s.body}>
-          <Text style={s.hint}>Your recurring plan. Changes here repeat every week.</Text>
-          {DAYS.map(({ dow, label }) => (
-            <View key={dow} style={s.dayRow}>
-              <Text style={s.dayLabel}>{label}</Text>
-              <View style={s.chips}>
-                {WORKOUT_TYPES.map(type => {
-                  const active = base[dow] === type;
-                  return (
-                    <TouchableOpacity key={type} style={[s.chip, active && s.chipActive]} onPress={() => pick(dow, type)}>
-                      <Text style={[s.chipText, active && s.chipTextActive]}>{type}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+      ))}
+    </Sheet>
   );
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ddd' },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: '#111' },
-  done: { fontSize: 15, color: '#007aff', fontWeight: '600', width: 44 },
-  body: { padding: 16, gap: 14, paddingBottom: 48 },
-  hint: { fontSize: 13, color: '#888' },
-  dayRow: { gap: 6 },
-  dayLabel: { fontSize: 14, fontWeight: '700', color: '#222' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { borderWidth: 1, borderColor: '#ddd', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  chipActive: { backgroundColor: '#111', borderColor: '#111' },
-  chipText: { fontSize: 13, color: '#555' },
-  chipTextActive: { color: '#fff', fontWeight: '600' },
-});
