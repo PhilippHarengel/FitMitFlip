@@ -455,7 +455,10 @@ const s = StyleSheet.create({
   wheelCol: { flex: 1, alignItems: 'center' },
   wheelCap: { fontSize: 11, color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   wheel: { width: '100%', height: 132 },
-  wheelItem: { fontSize: 20, height: 132 },
+  // Pin a dark text color: the Workout screen is still light-only (PR2 reskins it),
+  // so without this the wheel inherits the system label color (white in dark mode)
+  // and becomes invisible on the light card.
+  wheelItem: { fontSize: 20, height: 132, color: '#111' },
   deleteBtn: { width: 44, height: 38, borderRadius: 8, borderWidth: 1, borderColor: '#f1c0c0', alignItems: 'center', justifyContent: 'center' },
   confirmBtn: { width: 56, height: 38, borderRadius: 8, backgroundColor: '#1a9e54', alignItems: 'center', justifyContent: 'center' },
   restBtn: { backgroundColor: '#222' },

@@ -156,7 +156,7 @@ const s = StyleSheet.create({
   body: { padding: 16, gap: 12, paddingBottom: 48 },
   hint: { fontSize: 13, color: '#777', lineHeight: 19 },
   mono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#111' },
-  input: { backgroundColor: '#f7f7f7', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 10, padding: 12, fontSize: 14, minHeight: 200, textAlignVertical: 'top', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  input: { backgroundColor: '#f7f7f7', color: '#111', borderWidth: 1, borderColor: '#e0e0e0', borderRadius: 10, padding: 12, fontSize: 14, minHeight: 200, textAlignVertical: 'top', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   previewBox: { gap: 10, marginTop: 8 },
   previewTitle: { fontSize: 15, fontWeight: '700', color: '#111' },
   sessRow: { backgroundColor: '#f8f8f8', borderRadius: 10, padding: 12 },
