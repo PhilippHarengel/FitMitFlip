@@ -15,6 +15,22 @@ jest.mock('react-native-safe-area-context', () => ({
 // Haptics: spy on the selection feedback.
 jest.mock('expo-haptics', () => ({ selectionAsync: jest.fn() }));
 
+// Gesture handler: passthrough GestureDetector + a chainable Gesture.Pan() stub
+// so the component renders without the native gesture runtime under jest.
+jest.mock('react-native-gesture-handler', () => {
+  const chain = () => {
+    const g: any = {};
+    for (const k of ['onBegin', 'onStart', 'onUpdate', 'onChange', 'onEnd', 'onFinalize']) {
+      g[k] = () => g;
+    }
+    return g;
+  };
+  return {
+    GestureDetector: ({ children }: any) => children,
+    Gesture: { Pan: chain },
+  };
+});
+
 // Glass: a controllable availability flag + a tagged GlassView so we can assert
 // which background branch rendered. isLiquidGlassAvailable is reset per test.
 const mockGlassAvailable = jest.fn(() => true);
@@ -26,7 +42,7 @@ jest.mock('expo-glass-effect', () => {
   };
 });
 
-import { FloatingTabBar } from '../FloatingTabBar';
+import { FloatingTabBar, FLOATING_TAB_BAR_HEIGHT } from '../FloatingTabBar';
 
 // Minimal BottomTabBarProps fixture for three routes with a chosen active index.
 function makeProps(activeIndex: number, navigate = jest.fn(), emit = jest.fn(() => ({ defaultPrevented: false }))) {
@@ -132,12 +148,12 @@ describe('FloatingTabBar', () => {
       r = TestRenderer.create(<FloatingTabBar {...makeProps(1)} />);
     });
     expect(glassViews(r).length).toBe(0);
-    // The capsule is a plain View with the floating-bar geometry.
-    const capsule = r.root.findAll((node) => {
+    // The bar is a plain View with the floating-bar geometry.
+    const barView = r.root.findAll((node) => {
       const style = node.props.style;
       const flat = Array.isArray(style) ? Object.assign({}, ...style.flat(Infinity).filter(Boolean)) : style;
-      return !!flat && flat.height === 64 && flat.borderRadius === 32;
+      return !!flat && flat.height === FLOATING_TAB_BAR_HEIGHT && flat.borderRadius === FLOATING_TAB_BAR_HEIGHT / 2;
     });
-    expect(capsule.length).toBeGreaterThan(0);
+    expect(barView.length).toBeGreaterThan(0);
   });
 });
