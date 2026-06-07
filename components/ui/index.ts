@@ -1,5 +1,4 @@
-export { Screen } from './Screen';
-export { FloatingTabBar, FLOATING_TAB_BAR_HEIGHT } from './FloatingTabBar';
+export { Screen, NATIVE_TAB_BAR_HEIGHT } from './Screen';
 export { Card } from './Card';
 export { Sheet } from './Sheet';
 export { SwipeRow } from './SwipeRow';

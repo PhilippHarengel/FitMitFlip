@@ -145,9 +145,7 @@ export default function FoodScreen() {
   }
 
   return (
-    <Screen>
-      <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
-
+    <Screen topSafeArea header={<DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />}>
       {/* Search + scan */}
       <View style={{ flexDirection: 'row', gap: t.spacing.sm }}>
         <TextInput
@@ -285,7 +283,7 @@ function ManualEntrySheet({ visible, onClose, onSave, prefillName = '', barcode 
   }
 
   return (
-    <Sheet visible={visible} title="Add Manually" onClose={onClose} rightLabel="Save" onRight={handleSave}>
+    <Sheet visible={visible} title="Add Manually" onClose={onClose} actionLabel="Save" onAction={handleSave}>
       <Field theme={t} label="Product name" value={name} onChange={setName} autoFocus autoCapitalize="words" keyboard="default" />
       {barcode ? <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>Barcode {barcode} — saved so the next scan finds it instantly.</Text> : null}
       <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.xs }}>Values per 100g</Text>
@@ -320,7 +318,7 @@ function ServingSheet({ product, onClose, onConfirm }: {
   }
 
   return (
-    <Sheet visible={!!product} title={product.name} onClose={onClose} rightLabel="Add" onRight={confirm}>
+    <Sheet visible={!!product} title={product.name} onClose={onClose} actionLabel="Add" onAction={confirm}>
       {product.nutriments.incomplete && (
         <Text style={{ fontSize: 13, color: t.colors.warning, backgroundColor: t.colors.card, borderRadius: t.radius.control, padding: t.spacing.md }}>
           ⚠ Some nutrition data is missing for this product.

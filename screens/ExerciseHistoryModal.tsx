@@ -63,7 +63,7 @@ export default function ExerciseHistoryModal({ exercise, onClose }: {
   const deltaColor = delta == null ? t.colors.secondaryLabel : delta > 0 ? t.colors.success : delta < 0 ? t.colors.warning : t.colors.secondaryLabel;
 
   return (
-    <Sheet visible={exercise != null} title={exercise ?? ''} onClose={onClose} leftLabel="Done">
+    <Sheet visible={exercise != null} title={exercise ?? ''} onClose={onClose}>
       {loading ? (
         <Text style={[s.empty, { color: t.colors.secondaryLabel }]}>Loading…</Text>
       ) : points.length === 0 ? (
