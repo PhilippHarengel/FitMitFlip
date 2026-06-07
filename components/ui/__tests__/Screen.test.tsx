@@ -9,10 +9,11 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: TOP_INSET, bottom: BOTTOM_INSET, left: 0, right: 0 }),
 }));
 
-import { Screen } from '../Screen';
-import { FLOATING_TAB_BAR_HEIGHT } from '../FloatingTabBar';
+import { Screen, NATIVE_TAB_BAR_HEIGHT } from '../Screen';
 
-const CLEARANCE = BOTTOM_INSET + FLOATING_TAB_BAR_HEIGHT + 24;
+// No BottomTabBarHeightContext provider in the test tree, so Screen falls back
+// to safe-area inset + the native tab bar height.
+const CLEARANCE = BOTTOM_INSET + NATIVE_TAB_BAR_HEIGHT;
 
 // Flatten a (possibly array) style into a single object.
 function flatten(style: any) {

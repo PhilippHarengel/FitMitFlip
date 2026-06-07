@@ -1,5 +1,5 @@
 import { NavigationContainer, DefaultTheme, DarkTheme, type Theme as NavTheme } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
@@ -8,10 +8,12 @@ import WorkoutScreen from './screens/WorkoutScreen';
 import FoodScreen from './screens/FoodScreen';
 import { DateProvider } from './components/DateContext';
 import ErrorBoundary from './components/ErrorBoundary';
-import { FloatingTabBar } from './components/ui';
 import { ThemeProvider, useTheme, type Theme } from './theme';
 
-const Tab = createBottomTabNavigator();
+// Real native iOS tab bar (native UITabBarController via react-native-bottom-tabs).
+// On iOS 26 built with Xcode 26 it renders system Liquid Glass automatically — no
+// custom JS dock, no expo-glass-effect. Replaces the former FloatingTabBar.
+const Tab = createNativeBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // Every tab hides its native header; each screen's centered date row (rendered
@@ -66,14 +68,34 @@ function AppInner() {
     <NavigationContainer theme={navThemeFrom(t)}>
       <StatusBar style={t.scheme === 'dark' ? 'light' : 'dark'} />
       <DateProvider>
-        <Tab.Navigator
-          initialRouteName="Home"
-          tabBar={(props) => <FloatingTabBar {...props} />}
-          screenOptions={{ headerShown: false }}
-        >
-          <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-          <Tab.Screen name="Home" component={HomeStackScreen} />
-          <Tab.Screen name="Food" component={FoodStackScreen} />
+        <Tab.Navigator initialRouteName="Home">
+          <Tab.Screen
+            name="Workout"
+            component={WorkoutStackScreen}
+            options={{
+              title: 'Workout',
+              tabBarActiveTintColor: t.colors.tabActive,
+              tabBarIcon: () => ({ sfSymbol: 'dumbbell.fill' }),
+            }}
+          />
+          <Tab.Screen
+            name="Home"
+            component={HomeStackScreen}
+            options={{
+              title: 'Home',
+              tabBarActiveTintColor: t.colors.tabActive,
+              tabBarIcon: () => ({ sfSymbol: 'house.fill' }),
+            }}
+          />
+          <Tab.Screen
+            name="Food"
+            component={FoodStackScreen}
+            options={{
+              title: 'Food',
+              tabBarActiveTintColor: t.colors.tabActive,
+              tabBarIcon: () => ({ sfSymbol: 'fork.knife' }),
+            }}
+          />
         </Tab.Navigator>
       </DateProvider>
     </NavigationContainer>

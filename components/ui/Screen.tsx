@@ -1,8 +1,13 @@
 import React from 'react';
 import { ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
 import { useTheme } from '../../theme';
-import { FLOATING_TAB_BAR_HEIGHT } from './FloatingTabBar';
+
+// Standard iOS UITabBar content height (excludes the home-indicator safe area).
+// Used as the bottom-clearance fallback for the native tab bar, whose exact
+// height isn't exposed to JS via BottomTabBarHeightContext.
+export const NATIVE_TAB_BAR_HEIGHT = 49;
 
 // Screen body for a tab wrapped in a native-stack navigator. The native header
 // (with the large title) is provided by the navigator.
@@ -33,8 +38,13 @@ export function Screen({
   const t = useTheme();
   const insets = useSafeAreaInsets();
 
-  // Clear the floating dock so the last row / content isn't hidden behind it.
-  const dockClearance = insets.bottom + FLOATING_TAB_BAR_HEIGHT + 24;
+  // Clear the tab bar so the last row / content isn't hidden behind it. JS tab
+  // navigators publish the real height via BottomTabBarHeightContext; the native
+  // UITabBarController navigator does not, so fall back to the safe-area inset
+  // plus a standard tab bar height. Read the context directly (not
+  // useBottomTabBarHeight()) since that hook throws when the context is absent.
+  const tabBarHeight = React.useContext(BottomTabBarHeightContext);
+  const dockClearance = tabBarHeight ?? insets.bottom + NATIVE_TAB_BAR_HEIGHT;
 
   // Pinned header: opaque grouped background so scrolling content never shows
   // through behind it. Supplies the top padding so content starts flush below.
