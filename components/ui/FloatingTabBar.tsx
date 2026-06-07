@@ -65,10 +65,10 @@ const ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: 
   Food: { active: 'nutrition', inactive: 'nutrition-outline' },
 };
 
-// Display label per route (the Home tab reads "Today").
+// Display label per route.
 const LABELS: Record<string, string> = {
   Workout: 'Workout',
-  Home: 'Today',
+  Home: 'Home',
   Food: 'Food',
 };
 

@@ -89,6 +89,15 @@ describe('FloatingTabBar', () => {
     expect(tabButtons(r)).toHaveLength(3);
   });
 
+  it('labels the Home route "Home" (not "Today")', () => {
+    let r!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      r = TestRenderer.create(<FloatingTabBar {...makeProps(1)} />);
+    });
+    const labels = tabButtons(r).map((b) => b.props.accessibilityLabel);
+    expect(labels).toEqual(['Workout', 'Home', 'Food']);
+  });
+
   it('marks the correct active tab with the filled accent icon', () => {
     let r!: TestRenderer.ReactTestRenderer;
     act(() => {

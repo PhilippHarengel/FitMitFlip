@@ -14,42 +14,29 @@ import { ThemeProvider, useTheme, type Theme } from './theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-// Shared native-stack header options → real iOS large titles that collapse on scroll.
-function largeTitleOptions(t: Theme) {
-  return {
-    headerLargeTitle: true,
-    headerStyle: { backgroundColor: t.colors.bgGrouped },
-    headerLargeTitleStyle: { color: t.colors.label },
-    headerTitleStyle: { color: t.colors.label },
-    headerTintColor: t.colors.accent,
-    headerShadowVisible: false,
-  };
-}
-
-// Each tab is wrapped in a native-stack so it gets a real iOS large title.
+// Every tab hides its native header; each screen's centered date row (rendered
+// inside Screen's pinned header) is the only header, identical across all three
+// tabs so the date reads as one continuous header.
 function HomeStackScreen() {
-  const t = useTheme();
   return (
-    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
-      <Stack.Screen name="Today" component={HomeScreen} options={{ title: 'Today' }} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Today" component={HomeScreen} />
     </Stack.Navigator>
   );
 }
 
 function WorkoutStackScreen() {
-  const t = useTheme();
   return (
-    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
-      <Stack.Screen name="WorkoutMain" component={WorkoutScreen} options={{ title: 'Workout' }} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="WorkoutMain" component={WorkoutScreen} />
     </Stack.Navigator>
   );
 }
 
 function FoodStackScreen() {
-  const t = useTheme();
   return (
-    <Stack.Navigator screenOptions={largeTitleOptions(t)}>
-      <Stack.Screen name="FoodMain" component={FoodScreen} options={{ title: 'Food' }} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="FoodMain" component={FoodScreen} />
     </Stack.Navigator>
   );
 }
@@ -85,7 +72,7 @@ function AppInner() {
           screenOptions={{ headerShown: false }}
         >
           <Tab.Screen name="Workout" component={WorkoutStackScreen} />
-          <Tab.Screen name="Home" component={HomeStackScreen} options={{ tabBarLabel: 'Today' }} />
+          <Tab.Screen name="Home" component={HomeStackScreen} />
           <Tab.Screen name="Food" component={FoodStackScreen} />
         </Tab.Navigator>
       </DateProvider>

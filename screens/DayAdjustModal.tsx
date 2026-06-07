@@ -70,7 +70,7 @@ export default function DayAdjustModal({ date, currentType, onClose, onChanged }
   const sectionStyle = { fontSize: 13, fontWeight: '700' as const, color: t.colors.secondaryLabel, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: t.spacing.sm };
 
   return (
-    <Sheet visible={date != null} title="Adjust this day" onClose={onClose} leftLabel="Cancel">
+    <Sheet visible={date != null} title="Adjust this day" onClose={onClose}>
       <Text style={sectionStyle}>Set this day to</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.spacing.sm }}>
         {WORKOUT_TYPES.map(type => (

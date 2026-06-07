@@ -306,9 +306,7 @@ export default function WorkoutScreen() {
   const weekdayLabel = WD[date.getDay()];
 
   return (
-    <Screen>
-      <DateNavigator date={date} onChange={setDate} />
-
+    <Screen topSafeArea header={<DateNavigator date={date} onChange={setDate} />}>
       {/* Plan header */}
       <View style={L.planHeader}>
         <View style={{ flex: 1 }}>

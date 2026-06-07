@@ -29,7 +29,7 @@ export default function WeeklyPlanModal({ visible, onClose, onChanged }: {
   }
 
   return (
-    <Sheet visible={visible} title="Weekly Plan" onClose={onClose} leftLabel="Done">
+    <Sheet visible={visible} title="Weekly Plan" onClose={onClose}>
       <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>Your recurring plan. Changes here repeat every week.</Text>
       {DAYS.map(({ dow, label }) => (
         <View key={dow} style={{ gap: 6 }}>

@@ -34,6 +34,7 @@ export default function HomeScreen() {
   const [workoutDone, setWorkoutDone] = useState(false);
   const [foodCount, setFoodCount] = useState(0);
   const [goalsVisible, setGoalsVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -43,11 +44,6 @@ export default function HomeScreen() {
   const dateLabel = isToday
     ? 'Today'
     : date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  // Drive the native large title off the selected date.
-  useEffect(() => {
-    navigation.setOptions({ title: dateLabel });
-  }, [navigation, dateLabel]);
 
   const load = useCallback(async () => {
     const [m, tg, planned, done, fl] = await Promise.all([
@@ -120,10 +116,26 @@ export default function HomeScreen() {
   const nutritionState = deriveNutritionState(targets, foodCount);
   const workoutState = deriveWorkoutState(plannedType, workoutDone);
 
-  return (
-    <Screen>
+  // Full-width centered date (so it lines up with Workout/Food), with the
+  // settings gear overlaid at the top-left. The gear is absolutely positioned so
+  // it doesn't shrink the date row — keeping DateNavigator full width means its
+  // right-anchored "Today" chip no longer covers the next-day › arrow.
+  const homeHeader = (
+    <View style={{ justifyContent: 'center' }}>
       <DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />
+      <TouchableOpacity
+        onPress={() => setSettingsVisible(true)}
+        hitSlop={8}
+        style={{ position: 'absolute', left: 0, top: 0, bottom: 0, justifyContent: 'center' }}
+        accessibilityLabel="Settings"
+      >
+        <Icon name="gearshape" color={t.colors.accent} size={22} />
+      </TouchableOpacity>
+    </View>
+  );
 
+  return (
+    <Screen scroll={false} topSafeArea header={homeHeader}>
       {/* ── Nutrition (top) ─────────────────────────────────────────────── */}
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: t.spacing.sm }}>
@@ -172,23 +184,6 @@ export default function HomeScreen() {
         onStart={() => navigation.navigate('Workout')}
       />
 
-      {/* ── More ────────────────────────────────────────────────────────── */}
-      <ListSection header="More">
-        <ListRow icon="target" title="Goals" onPress={() => setGoalsVisible(true)} />
-        <ListRow
-          icon="square.and.arrow.up"
-          title={backingUp ? 'Preparing backup…' : 'Back up data'}
-          chevron={false}
-          onPress={backingUp || restoring ? undefined : handleBackup}
-        />
-        <ListRow
-          icon="square.and.arrow.down"
-          title={restoring ? 'Restoring…' : 'Restore from backup'}
-          chevron={false}
-          onPress={backingUp || restoring ? undefined : handleRestore}
-        />
-      </ListSection>
-
       <NutrientDetailModal
         visible={detailVisible}
         dateLabel={dateLabel}
@@ -203,6 +198,27 @@ export default function HomeScreen() {
         onClose={() => setGoalsVisible(false)}
         onSave={handleSaveGoals}
       />
+      <Sheet visible={settingsVisible} title="Settings" onClose={() => setSettingsVisible(false)}>
+        <ListSection>
+          <ListRow
+            icon="target"
+            title="Goals"
+            onPress={() => { setSettingsVisible(false); setGoalsVisible(true); }}
+          />
+          <ListRow
+            icon="square.and.arrow.up"
+            title={backingUp ? 'Preparing backup…' : 'Back up data'}
+            chevron={false}
+            onPress={backingUp || restoring ? undefined : handleBackup}
+          />
+          <ListRow
+            icon="square.and.arrow.down"
+            title={restoring ? 'Restoring…' : 'Restore from backup'}
+            chevron={false}
+            onPress={backingUp || restoring ? undefined : handleRestore}
+          />
+        </ListSection>
+      </Sheet>
     </Screen>
   );
 }
@@ -296,7 +312,7 @@ function NutrientDetailModal({ visible, dateLabel, macros, targets, onClose, onE
   onClose: () => void; onEditGoals: () => void;
 }) {
   return (
-    <Sheet visible={visible} title={`Nutrients — ${dateLabel}`} onClose={onClose} leftLabel="Done" rightLabel="Goals" onRight={onEditGoals}>
+    <Sheet visible={visible} title={`Nutrients — ${dateLabel}`} onClose={onClose} secondaryLabel="Goals" onSecondary={onEditGoals}>
       <MacroProgress label="Calories" unit=" kcal" current={macros.kcal} target={targets.kcal} />
       <MacroProgress label="Protein" unit="g" current={macros.protein_g} target={targets.protein_g} />
       <MacroProgress label="Carbs" unit="g" current={macros.carbs_g} target={targets.carbs_g} />
@@ -372,7 +388,7 @@ function GoalsModal({ visible, initial, onClose, onSave }: {
   }
 
   return (
-    <Sheet visible={visible} title="Daily Goals" onClose={onClose} rightLabel="Save" onRight={handleSave}>
+    <Sheet visible={visible} title="Daily Goals" onClose={onClose} actionLabel="Save" onAction={handleSave}>
       <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: t.spacing.sm }}>
         Leave a field blank to track that macro without a goal.
       </Text>
