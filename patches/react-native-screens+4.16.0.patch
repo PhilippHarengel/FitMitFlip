@@ -1,0 +1,48 @@
+diff --git a/node_modules/react-native-screens/package.json b/node_modules/react-native-screens/package.json
+index bebb07c..2df5bb5 100644
+--- a/node_modules/react-native-screens/package.json
++++ b/node_modules/react-native-screens/package.json
+@@ -164,8 +164,6 @@
+     },
+     "ios": {
+       "componentProvider": {
+-        "RNSStackScreen": "RNSStackScreenComponentView",
+-        "RNSScreenStackHost": "RNSScreenStackHostComponentView",
+         "RNSBottomTabsScreen": "RNSBottomTabsScreenComponentView",
+         "RNSBottomTabs": "RNSBottomTabsHostComponentView",
+         "RNSFullWindowOverlay": "RNSFullWindowOverlay",
+@@ -178,9 +176,7 @@
+         "RNSScreenStackHeaderConfig": "RNSScreenStackHeaderConfig",
+         "RNSScreenStackHeaderSubview": "RNSScreenStackHeaderSubview",
+         "RNSScreenStack": "RNSScreenStackView",
+-        "RNSSearchBar": "RNSSearchBar",
+-        "RNSSplitViewHost": "RNSSplitViewHostComponentView",
+-        "RNSSplitViewScreen": "RNSSplitViewScreenComponentView"
++        "RNSSearchBar": "RNSSearchBar"
+       },
+       "components": {
+         "RNSFullWindowOverlay": {
+@@ -216,23 +212,11 @@
+         "RNSSearchBar": {
+           "className": "RNSSearchBar"
+         },
+-        "RNSStackScreen": {
+-          "className": "RNSStackScreenComponentView"
+-        },
+-        "RNSScreenStackHost": {
+-          "className": "RNSScreenStackHostComponentView"
+-        },
+         "RNSBottomTabsScreen": {
+           "className": "RNSBottomTabsScreenComponentView"
+         },
+         "RNSBottomTabs": {
+           "className": "RNSBottomTabsHostComponentView"
+-        },
+-        "RNSSplitViewHost": {
+-          "className": "RNSSplitViewHostComponentView"
+-        },
+-        "RNSSplitViewScreen": {
+-          "className": "RNSSplitViewScreenComponentView"
+         }
+       }
+     }
