@@ -1,3 +1,6 @@
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { NavigationContainer, DefaultTheme, DarkTheme, type Theme as NavTheme } from '@react-navigation/native';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -64,6 +67,14 @@ function navThemeFrom(t: Theme): NavTheme {
 
 function AppInner() {
   const t = useTheme();
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') Notifications.dismissAllNotificationsAsync().catch(() => {});
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <NavigationContainer theme={navThemeFrom(t)}>
       <StatusBar style={t.scheme === 'dark' ? 'light' : 'dark'} />

@@ -9,7 +9,7 @@ import WeeklyPlanModal from './WeeklyPlanModal';
 import DayAdjustModal from './DayAdjustModal';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
-import { Screen, SwipeRow, Icon } from '../components/ui';
+import { Screen, SwipeRow, Icon, RestDoneBanner } from '../components/ui';
 import { useTheme } from '../theme';
 import {
   createWorkout,
@@ -78,7 +78,8 @@ export default function WorkoutScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setRestEndsAt(null);
         setRestKey(null);
-        notifId.current = null; // the scheduled notification fires on its own
+        cancelRest(notifId.current);
+        notifId.current = null;
         setDoneFlashKey(finishedKey);
         setTimeout(() => setDoneFlashKey(prev => (prev === finishedKey ? null : prev)), DONE_FLASH_MS);
       }
@@ -306,6 +307,7 @@ export default function WorkoutScreen() {
   const weekdayLabel = WD[date.getDay()];
 
   return (
+    <View style={{ flex: 1 }}>
     <Screen topSafeArea header={<DateNavigator date={date} onChange={setDate} />}>
       {/* Plan header */}
       <View style={L.planHeader}>
@@ -462,6 +464,8 @@ export default function WorkoutScreen() {
         onChanged={() => load()}
       />
     </Screen>
+    <RestDoneBanner visible={doneFlashKey !== null} onDismiss={() => setDoneFlashKey(null)} />
+    </View>
   );
 }
 

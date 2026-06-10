@@ -3,12 +3,10 @@ import * as Notifications from 'expo-notifications';
 // Show the alert even when the app is in the foreground.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
+    shouldShowAlert: false,
+    shouldPlaySound: false,
     shouldSetBadge: false,
-    // SDK 54 split the old shouldShowAlert into banner/list — set both so it
-    // surfaces regardless of which field the runtime honours.
-    shouldShowBanner: true,
+    shouldShowBanner: false,
     shouldShowList: false,
   }),
 });
