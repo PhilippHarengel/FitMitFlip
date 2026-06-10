@@ -58,6 +58,8 @@ const MIGRATIONS: string[] = [
      (1,'Rest'),(2,'Upper Body'),(3,'Leg Day'),(4,'Rest'),(5,'Full Body'),(6,'Rest'),(0,'Jogging')`,
   `CREATE TABLE IF NOT EXISTS schedule_overrides (date TEXT PRIMARY KEY, type TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS completions (date TEXT PRIMARY KEY, done INTEGER NOT NULL)`,
+  // v5 — generic key-value store for user preferences (e.g. accent color)
+  `CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;

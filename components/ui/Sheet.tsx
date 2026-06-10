@@ -102,7 +102,7 @@ export function Sheet({
         style={{ flex: 1, backgroundColor: t.colors.bgGrouped }}
       >
         {/* Grabber handle */}
-        <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
+        <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4, backgroundColor: t.colors.bg }}>
           <View style={{ width: 36, height: 5, borderRadius: 3, backgroundColor: '#C7C7CC' }} />
         </View>
         {header}
@@ -124,7 +124,7 @@ export function Sheet({
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={label}
-            style={{ backgroundColor: disabled ? t.colors.secondaryLabel : t.colors.accent, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}
+            style={{ backgroundColor: disabled ? t.colors.secondaryLabel : t.colors.accent, borderRadius: t.radius.control, paddingVertical: 15, alignItems: 'center' }}
           >
             <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700' }}>{label}</Text>
           </TouchableOpacity>

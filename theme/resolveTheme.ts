@@ -3,8 +3,6 @@ import { spacing, type Spacing } from './spacing';
 import { radius, type Radius } from './radius';
 import { typography, type Typography } from './typography';
 
-// Pure: a color scheme in, a complete theme out. No React Native imports, so
-// this is unit-testable in isolation (theme/__tests__/resolveTheme.test.ts).
 export type Theme = {
   scheme: ColorScheme;
   colors: Palette;
@@ -13,12 +11,13 @@ export type Theme = {
   typography: Typography;
 };
 
-export function resolveTheme(scheme: ColorScheme): Theme {
-  return {
-    scheme,
-    colors: scheme === 'dark' ? darkColors : lightColors,
-    spacing,
-    radius,
-    typography,
-  };
+// Pure: scheme + optional accent override → complete theme. The accent override
+// replaces both `accent` and `tabActive` so every interactive element and the
+// tab bar tint stay in sync with the user's chosen color.
+export function resolveTheme(scheme: ColorScheme, accentOverride?: string): Theme {
+  const base = scheme === 'dark' ? darkColors : lightColors;
+  const colors: Palette = accentOverride
+    ? { ...base, accent: accentOverride, tabActive: accentOverride }
+    : base;
+  return { scheme, colors, spacing, radius, typography };
 }

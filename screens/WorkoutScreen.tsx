@@ -481,6 +481,6 @@ const L = StyleSheet.create({
   wheelCol: { flex: 1, alignItems: 'center' },
   wheelCap: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   wheel: { width: '100%', height: 132 },
-  actionBtn: { minWidth: 56, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  doneBadge: { borderWidth: 1.5, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4 },
+  actionBtn: { minWidth: 56, height: 38, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  doneBadge: { borderWidth: 1.5, borderRadius: 18, padding: 14, alignItems: 'center', marginTop: 4 },
 });

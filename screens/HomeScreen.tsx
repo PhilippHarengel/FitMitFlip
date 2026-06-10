@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
 import { Screen, Card, ListSection, ListRow, Button, ProgressBar, Ring, Icon, Sheet } from '../components/ui';
-import { useTheme, type Theme } from '../theme';
+import { useTheme, useAccentColor, ACCENT_PRESETS, type Theme } from '../theme';
 import { backupToFile } from '../db/backup';
 import {
   getDailyMacros,
@@ -26,6 +26,7 @@ const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat
 
 export default function HomeScreen() {
   const t = useTheme();
+  const { accentKey, setAccentColor } = useAccentColor();
   const navigation = useNavigation<any>(); // cross-tab navigate + setOptions; tab/stack types don't compose cleanly
   const { date, setDate } = useSelectedDate();
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
@@ -205,19 +206,63 @@ export default function HomeScreen() {
             title="Goals"
             onPress={() => { setSettingsVisible(false); setGoalsVisible(true); }}
           />
-          <ListRow
-            icon="square.and.arrow.up"
-            title={backingUp ? 'Preparing backup…' : 'Back up data'}
-            chevron={false}
-            onPress={backingUp || restoring ? undefined : handleBackup}
-          />
-          <ListRow
-            icon="square.and.arrow.down"
-            title={restoring ? 'Restoring…' : 'Restore from backup'}
-            chevron={false}
-            onPress={backingUp || restoring ? undefined : handleRestore}
-          />
         </ListSection>
+        <View style={{ marginTop: t.spacing.sm }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: t.colors.secondaryLabel, marginBottom: t.spacing.sm, paddingHorizontal: t.spacing.xs, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+            Theme Color
+          </Text>
+          <View style={{ backgroundColor: t.colors.card, borderRadius: t.radius.card, padding: t.spacing.lg }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              {ACCENT_PRESETS.map(preset => {
+                const selected = preset.key === accentKey;
+                const swatchColor = t.scheme === 'dark' ? preset.dark : preset.light;
+                return (
+                  <Pressable
+                    key={preset.key}
+                    onPress={() => setAccentColor(preset.key)}
+                    style={{ alignItems: 'center', gap: 6 }}
+                  >
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: t.radius.full,
+                      backgroundColor: swatchColor,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: selected ? 3 : 0,
+                      borderColor: selected ? swatchColor : 'transparent',
+                      shadowColor: swatchColor,
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: selected ? 0.4 : 0,
+                      shadowRadius: 4,
+                    }}>
+                      {selected && <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>✓</Text>}
+                    </View>
+                    <Text style={{ fontSize: 10, color: t.colors.secondaryLabel, fontWeight: '500' }}>
+                      {preset.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+        <View style={{ marginTop: t.spacing.sm }}>
+          <ListSection>
+            <ListRow
+              icon="square.and.arrow.up"
+              title={backingUp ? 'Preparing backup…' : 'Back up data'}
+              chevron={false}
+              onPress={backingUp || restoring ? undefined : handleBackup}
+            />
+            <ListRow
+              icon="square.and.arrow.down"
+              title={restoring ? 'Restoring…' : 'Restore from backup'}
+              chevron={false}
+              onPress={backingUp || restoring ? undefined : handleRestore}
+            />
+          </ListSection>
+        </View>
       </Sheet>
     </Screen>
   );

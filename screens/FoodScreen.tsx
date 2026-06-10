@@ -227,7 +227,7 @@ export default function FoodScreen() {
               <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>✕  Close</Text>
             </TouchableOpacity>
             <View style={{ width: 240, height: 160, borderWidth: 2, borderColor: '#fff', borderRadius: 8 }} />
-            <Text style={{ color: '#fff', fontSize: 14, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>Point at a barcode</Text>
+            <Text style={{ color: '#fff', fontSize: 14, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: t.radius.control }}>Point at a barcode</Text>
           </SafeAreaView>
         </CameraView>
       </Modal>
