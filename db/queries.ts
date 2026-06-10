@@ -188,7 +188,20 @@ export type FoodLogEntry = {
   date: string;
   food_id: number;
   serving_g: number;
+  group_id: string | null;
+  meal_name: string | null;
 };
+
+export type Meal = { id: number; name: string };
+export type MealItem = {
+  id: number;
+  meal_id: number;
+  food_id: number;
+  serving_g: number;
+  name: string;
+  kcal_per_100g: number | null;
+};
+export type MealWithItems = Meal & { items: MealItem[] };
 
 export type DailyMacros = {
   kcal: number;
@@ -444,9 +457,11 @@ export async function upsertFood(food: Omit<Food, 'id'>): Promise<number> {
 export async function getFoodLogForDate(date: string): Promise<(FoodLogEntry & Food)[]> {
   const db = await getDb();
   return db.getAllAsync<FoodLogEntry & Food>(
-    `SELECT fl.*, f.name, f.kcal_per_100g, f.protein_g, f.carbs_g, f.fat_g
+    `SELECT fl.*, f.name, f.kcal_per_100g, f.protein_g, f.carbs_g, f.fat_g,
+            flg.meal_name
      FROM food_log fl
      JOIN foods f ON fl.food_id = f.id
+     LEFT JOIN food_log_groups flg ON fl.group_id = flg.group_id
      WHERE fl.date = ?
      ORDER BY fl.id ASC`,
     [date]
@@ -464,7 +479,104 @@ export async function logFood(date: string, foodId: number, servingG: number): P
 
 export async function deleteFoodLogEntry(id: number): Promise<void> {
   const db = await getDb();
+  const entry = await db.getFirstAsync<{ group_id: string | null }>(
+    'SELECT group_id FROM food_log WHERE id = ?', [id]
+  );
   await db.runAsync('DELETE FROM food_log WHERE id = ?', [id]);
+  if (entry?.group_id) {
+    const remaining = await db.getFirstAsync<{ cnt: number }>(
+      'SELECT COUNT(*) as cnt FROM food_log WHERE group_id = ?', [entry.group_id]
+    );
+    if ((remaining?.cnt ?? 0) === 0) {
+      await db.runAsync('DELETE FROM food_log_groups WHERE group_id = ?', [entry.group_id]);
+    }
+  }
+}
+
+export async function deleteFoodLogGroup(groupId: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM food_log WHERE group_id = ?', [groupId]);
+  await db.runAsync('DELETE FROM food_log_groups WHERE group_id = ?', [groupId]);
+}
+
+// ─── Meals ────────────────────────────────────────────────────────────────────
+
+export async function getMeals(): Promise<Meal[]> {
+  const db = await getDb();
+  return db.getAllAsync<Meal>('SELECT id, name FROM meals ORDER BY id ASC');
+}
+
+export async function getMealWithItems(id: number): Promise<MealWithItems | null> {
+  const db = await getDb();
+  const meal = await db.getFirstAsync<Meal>('SELECT id, name FROM meals WHERE id = ?', [id]);
+  if (!meal) return null;
+  const items = await db.getAllAsync<MealItem>(
+    `SELECT mi.id, mi.meal_id, mi.food_id, mi.serving_g, f.name, f.kcal_per_100g
+     FROM meal_items mi
+     JOIN foods f ON mi.food_id = f.id
+     WHERE mi.meal_id = ?
+     ORDER BY mi.id ASC`,
+    [id]
+  );
+  return { ...meal, items };
+}
+
+export async function createMeal(name: string): Promise<number> {
+  const db = await getDb();
+  const result = await db.runAsync('INSERT INTO meals (name) VALUES (?)', [name]);
+  return result.lastInsertRowId;
+}
+
+export async function updateMeal(id: number, name: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('UPDATE meals SET name = ? WHERE id = ?', [name, id]);
+}
+
+export async function deleteMeal(id: number): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM meal_items WHERE meal_id = ?', [id]);
+    await db.runAsync('DELETE FROM meals WHERE id = ?', [id]);
+  });
+}
+
+export async function setMealItems(
+  mealId: number,
+  items: Array<{ food_id: number; serving_g: number }>
+): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM meal_items WHERE meal_id = ?', [mealId]);
+    for (const item of items) {
+      await db.runAsync(
+        'INSERT INTO meal_items (meal_id, food_id, serving_g) VALUES (?, ?, ?)',
+        [mealId, item.food_id, item.serving_g]
+      );
+    }
+  });
+}
+
+export async function logMeal(date: string, mealId: number): Promise<void> {
+  const db = await getDb();
+  const meal = await db.getFirstAsync<Meal>('SELECT id, name FROM meals WHERE id = ?', [mealId]);
+  if (!meal) return;
+  const items = await db.getAllAsync<{ food_id: number; serving_g: number }>(
+    'SELECT food_id, serving_g FROM meal_items WHERE meal_id = ?', [mealId]
+  );
+  if (items.length === 0) return;
+  const groupId = Date.now().toString();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'INSERT INTO food_log_groups (group_id, date, meal_name) VALUES (?, ?, ?)',
+      [groupId, date, meal.name]
+    );
+    for (const item of items) {
+      await db.runAsync(
+        'INSERT INTO food_log (date, food_id, serving_g, group_id) VALUES (?, ?, ?, ?)',
+        [date, item.food_id, item.serving_g, groupId]
+      );
+    }
+  });
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

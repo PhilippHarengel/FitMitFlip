@@ -60,6 +60,27 @@ const MIGRATIONS: string[] = [
   `CREATE TABLE IF NOT EXISTS completions (date TEXT PRIMARY KEY, done INTEGER NOT NULL)`,
   // v5 — generic key-value store for user preferences (e.g. accent color)
   `CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  // v6 — meal presets: named collections of foods with serving sizes that can
+  // be logged in one tap. food_log gains group_id (null = solo entry); all rows
+  // from one logMeal() call share the same group_id. food_log_groups stores the
+  // display name for each group so the log can render a meal header row.
+  `CREATE TABLE IF NOT EXISTS meals (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS meal_items (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    meal_id   INTEGER NOT NULL,
+    food_id   INTEGER NOT NULL,
+    serving_g REAL NOT NULL
+  )`,
+  `ALTER TABLE food_log ADD COLUMN group_id TEXT`,
+  `CREATE TABLE IF NOT EXISTS food_log_groups (
+    group_id  TEXT PRIMARY KEY,
+    date      TEXT NOT NULL,
+    meal_name TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_food_log_group ON food_log(group_id)`,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;

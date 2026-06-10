@@ -4,18 +4,22 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { useFocusEffect } from '@react-navigation/native';
 import DateNavigator from '../components/DateNavigator';
 import { useSelectedDate } from '../components/DateContext';
-import { Screen, Card, ListSection, ListRow, Sheet, SwipeRow, Icon } from '../components/ui';
+import { Screen, Card, ListSection, ListRow, Sheet, SwipeRow, Icon, MealLogConfirmSheet, MealEditSheet } from '../components/ui';
 import { useTheme, type Theme } from '../theme';
 import { lookupBarcode, searchByName, type ProductResult } from '../api/openFoodFacts';
 import {
   deleteFoodLogEntry,
+  deleteFoodLogGroup,
   getFoodByBarcode,
   getFoodLogForDate,
+  getMeals,
+  deleteMeal,
   logFood,
   toDateString,
   upsertFood,
   type FoodLogEntry,
   type Food,
+  type Meal,
 } from '../db/queries';
 import { today } from '../db/queries';
 
@@ -27,6 +31,9 @@ export default function FoodScreen() {
   const t = useTheme();
   const { date, setDate } = useSelectedDate();
   const [foodLog, setFoodLog] = useState<(FoodLogEntry & Food)[]>([]);
+  const [meals, setMeals] = useState<Meal[]>([]);
+  const [mealToLog, setMealToLog] = useState<number | null>(null);
+  const [editMealId, setEditMealId] = useState<number | 'new' | null>(null);
 
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
@@ -48,7 +55,9 @@ export default function FoodScreen() {
   const dateStr = toDateString(date);
 
   const load = useCallback(async () => {
-    setFoodLog(await getFoodLogForDate(dateStr));
+    const [log, mealList] = await Promise.all([getFoodLogForDate(dateStr), getMeals()]);
+    setFoodLog(log);
+    setMeals(mealList);
   }, [dateStr]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -144,6 +153,34 @@ export default function FoodScreen() {
     await load();
   }
 
+  async function removeGroup(groupId: string) {
+    await deleteFoodLogGroup(groupId);
+    await load();
+  }
+
+  async function handleDeleteMeal(id: number) {
+    await deleteMeal(id);
+    await load();
+  }
+
+  type LogGroup = { groupId: string | null; mealName: string | null; items: (FoodLogEntry & Food)[] };
+  function groupFoodLog(entries: (FoodLogEntry & Food)[]): LogGroup[] {
+    const groups: LogGroup[] = [];
+    const seen = new Map<string, LogGroup>();
+    for (const e of entries) {
+      if (!e.group_id) {
+        groups.push({ groupId: null, mealName: null, items: [e] });
+      } else if (seen.has(e.group_id)) {
+        seen.get(e.group_id)!.items.push(e);
+      } else {
+        const g: LogGroup = { groupId: e.group_id, mealName: e.meal_name, items: [e] };
+        groups.push(g);
+        seen.set(e.group_id, g);
+      }
+    }
+    return groups;
+  }
+
   return (
     <Screen topSafeArea header={<DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />}>
       {/* Search + scan */}
@@ -189,6 +226,24 @@ export default function FoodScreen() {
         </ListSection>
       )}
 
+      {/* Meals */}
+      <ListSection header="Meals">
+        {meals.map(meal => (
+          <SwipeRow key={meal.id} onDelete={() => handleDeleteMeal(meal.id)}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: t.spacing.lg, minHeight: 48, backgroundColor: t.colors.card }}>
+              <Text style={{ flex: 1, fontSize: 17, color: t.colors.label }} numberOfLines={1}>{meal.name}</Text>
+              <TouchableOpacity onPress={() => setEditMealId(meal.id)} hitSlop={8} style={{ paddingHorizontal: t.spacing.sm }}>
+                <Text style={{ color: t.colors.secondaryLabel, fontSize: 15 }}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setMealToLog(meal.id)} hitSlop={8} style={{ paddingLeft: t.spacing.sm }}>
+                <Text style={{ color: t.colors.accent, fontSize: 15, fontWeight: '600' }}>Log</Text>
+              </TouchableOpacity>
+            </View>
+          </SwipeRow>
+        ))}
+        <ListRow icon="plus" iconColor={t.colors.accent} title="New Meal" chevron={false} onPress={() => setEditMealId('new')} />
+      </ListSection>
+
       {/* Food log */}
       {foodLog.length === 0 ? (
         <Card>
@@ -198,17 +253,49 @@ export default function FoodScreen() {
         </Card>
       ) : (
         <ListSection header="Logged today">
-          {foodLog.map(entry => {
-            const kcal = entry.kcal_per_100g != null ? Math.round((entry.serving_g / 100) * entry.kcal_per_100g) : null;
+          {groupFoodLog(foodLog).map((group, gi) => {
+            if (!group.groupId) {
+              const entry = group.items[0];
+              const kcal = entry.kcal_per_100g != null ? Math.round((entry.serving_g / 100) * entry.kcal_per_100g) : null;
+              return (
+                <SwipeRow key={entry.id} onDelete={() => removeEntry(entry.id)}>
+                  <View style={{ paddingVertical: 12, paddingHorizontal: t.spacing.lg, minHeight: 48, justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 16, color: t.colors.label }} numberOfLines={1}>{entry.name}</Text>
+                    <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 2 }}>
+                      {entry.serving_g}g{kcal != null ? ` · ${kcal} kcal` : ''}
+                    </Text>
+                  </View>
+                </SwipeRow>
+              );
+            }
+            const groupKcal = group.items.reduce((sum, e) => {
+              if (e.kcal_per_100g == null) return sum;
+              return sum + (e.serving_g / 100) * e.kcal_per_100g;
+            }, 0);
             return (
-              <SwipeRow key={entry.id} onDelete={() => removeEntry(entry.id)}>
-                <View style={{ paddingVertical: 12, paddingHorizontal: t.spacing.lg, minHeight: 48, justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 16, color: t.colors.label }} numberOfLines={1}>{entry.name}</Text>
-                  <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 2 }}>
-                    {entry.serving_g}g{kcal != null ? ` · ${kcal} kcal` : ''}
-                  </Text>
-                </View>
-              </SwipeRow>
+              <React.Fragment key={group.groupId}>
+                <SwipeRow onDelete={() => removeGroup(group.groupId!)}>
+                  <View style={{ paddingVertical: 10, paddingHorizontal: t.spacing.lg, backgroundColor: t.colors.card }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: t.colors.label }}>{group.mealName ?? 'Meal'}</Text>
+                    <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 1 }}>
+                      {group.items.length} items{groupKcal > 0 ? ` · ${Math.round(groupKcal)} kcal` : ''}
+                    </Text>
+                  </View>
+                </SwipeRow>
+                {group.items.map(entry => {
+                  const kcal = entry.kcal_per_100g != null ? Math.round((entry.serving_g / 100) * entry.kcal_per_100g) : null;
+                  return (
+                    <SwipeRow key={entry.id} onDelete={() => removeEntry(entry.id)}>
+                      <View style={{ paddingVertical: 10, paddingHorizontal: t.spacing.lg, paddingLeft: t.spacing.xl + t.spacing.md, backgroundColor: t.colors.card }}>
+                        <Text style={{ fontSize: 15, color: t.colors.label }} numberOfLines={1}>{entry.name}</Text>
+                        <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 1 }}>
+                          {entry.serving_g}g{kcal != null ? ` · ${kcal} kcal` : ''}
+                        </Text>
+                      </View>
+                    </SwipeRow>
+                  );
+                })}
+              </React.Fragment>
             );
           })}
         </ListSection>
@@ -243,6 +330,18 @@ export default function FoodScreen() {
         product={servingProduct}
         onClose={() => setServingProduct(null)}
         onConfirm={handleConfirmServing}
+      />
+      <MealLogConfirmSheet
+        mealId={mealToLog}
+        date={dateStr}
+        onClose={() => setMealToLog(null)}
+        onLogged={() => { setMealToLog(null); load(); }}
+      />
+      <MealEditSheet
+        mealId={editMealId}
+        visible={editMealId != null}
+        onClose={() => setEditMealId(null)}
+        onSaved={() => { setEditMealId(null); load(); }}
       />
     </Screen>
   );

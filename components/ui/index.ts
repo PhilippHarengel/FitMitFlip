@@ -10,3 +10,5 @@ export { Ring } from './Ring';
 export { Icon, type IconName } from './Icon';
 export { ringPct, isOver } from './ringMath';
 export { RestDoneBanner } from './RestDoneBanner';
+export { MealLogConfirmSheet } from './MealLogConfirmSheet';
+export { MealEditSheet } from './MealEditSheet';
