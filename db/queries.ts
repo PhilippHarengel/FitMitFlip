@@ -1,4 +1,5 @@
 import { getDb } from './db';
+import type { ShoppingPlan } from '../lib/shoppingPlan';
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -628,5 +629,169 @@ export async function setTargets(t: Targets): Promise<void> {
   await db.runAsync(
     `UPDATE targets SET kcal=?, protein_g=?, carbs_g=?, fat_g=? WHERE id = 1`,
     [t.kcal, t.protein_g, t.carbs_g, t.fat_g]
+  );
+}
+
+export type RecipePortion = {
+  id: string;
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+};
+
+// Portionsmakros stehen als Werte je 100 g und serving_g ist 100, damit die
+// Home-Formel (serving_g / 100) * je_100g genau eine Portion ergibt.
+export async function eatRecipePortion(recipe: RecipePortion, date = today()): Promise<void> {
+  const db = await getDb();
+  const existing = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM food_log WHERE date = ? AND recipe_id = ? LIMIT 1',
+    [date, recipe.id],
+  );
+  if (existing) return;
+  const foodId = await upsertFood({
+    barcode: null,
+    name: recipe.name,
+    kcal_per_100g: recipe.kcal,
+    protein_g: recipe.protein,
+    carbs_g: recipe.carbs,
+    fat_g: recipe.fat,
+    cached_at: date,
+    source: 'manual',
+  });
+  await db.runAsync(
+    'INSERT INTO food_log (date, food_id, serving_g, recipe_id) VALUES (?, ?, 100, ?)',
+    [date, foodId, recipe.id],
+  );
+}
+
+export async function undoRecipePortion(recipeId: string, date = today()): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM food_log WHERE date = ? AND recipe_id = ?', [date, recipeId]);
+}
+
+export async function isRecipeEaten(recipeId: string, date = today()): Promise<boolean> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM food_log WHERE date = ? AND recipe_id = ? LIMIT 1',
+    [date, recipeId],
+  );
+  return row != null;
+}
+
+export type RecipeDraft = {
+  id: number;
+  name: string;
+  ingredients: string;
+  instructions: string;
+  video: string;
+  confirmed: number;
+};
+
+export type RecipeDraftInput = {
+  name: string;
+  ingredients: string;
+  instructions: string;
+  video?: string;
+  confirmed?: number;
+};
+
+export async function listRecipeDrafts(): Promise<RecipeDraft[]> {
+  const db = await getDb();
+  return db.getAllAsync<RecipeDraft>(
+    'SELECT id, name, ingredients, instructions, video, confirmed FROM recipe_drafts ORDER BY id ASC',
+  );
+}
+
+export async function getRecipeDraft(id: number): Promise<RecipeDraft | null> {
+  const db = await getDb();
+  return db.getFirstAsync<RecipeDraft>(
+    'SELECT id, name, ingredients, instructions, video, confirmed FROM recipe_drafts WHERE id = ?',
+    [id],
+  );
+}
+
+export async function createRecipeDraft(draft: RecipeDraftInput): Promise<number> {
+  const db = await getDb();
+  const result = await db.runAsync(
+    'INSERT INTO recipe_drafts (name, ingredients, instructions, video, confirmed) VALUES (?, ?, ?, ?, ?)',
+    [draft.name, draft.ingredients, draft.instructions, draft.video ?? '', draft.confirmed ? 1 : 0],
+  );
+  return result.lastInsertRowId;
+}
+
+export async function updateRecipeDraft(id: number, draft: RecipeDraftInput): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'UPDATE recipe_drafts SET name = ?, ingredients = ?, instructions = ?, video = ?, confirmed = ? WHERE id = ?',
+    [draft.name, draft.ingredients, draft.instructions, draft.video ?? '', draft.confirmed ? 1 : 0, id],
+  );
+}
+
+export async function deleteRecipeDraft(id: number): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM recipe_drafts WHERE id = ?', [id]);
+}
+
+export async function getRecipeVideo(recipeId: string): Promise<string> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ url: string }>(
+    'SELECT url FROM recipe_videos WHERE recipe_id = ?',
+    [recipeId],
+  );
+  return row?.url ?? '';
+}
+
+export async function saveRecipeVideo(recipeId: string, url: string): Promise<void> {
+  const db = await getDb();
+  const trimmed = url.trim();
+  await db.runAsync('DELETE FROM recipe_videos WHERE recipe_id = ?', [recipeId]);
+  if (!trimmed) return;
+  await db.runAsync('INSERT INTO recipe_videos (recipe_id, url) VALUES (?, ?)', [recipeId, trimmed]);
+}
+
+export type RecipeOpinion = {
+  recipeId: string;
+  name: string;
+  liked: boolean;
+};
+
+export async function listRecipeOpinions(): Promise<RecipeOpinion[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ recipe_id: string; name: string; liked: number }>(
+    'SELECT recipe_id, name, liked FROM recipe_opinions',
+  );
+  return rows.map((row) => ({ recipeId: row.recipe_id, name: row.name, liked: row.liked === 1 }));
+}
+
+export async function setRecipeOpinion(recipeId: string, name: string, liked: boolean): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM recipe_opinions WHERE recipe_id = ?', [recipeId]);
+  await db.runAsync(
+    'INSERT INTO recipe_opinions (recipe_id, name, liked) VALUES (?, ?, ?)',
+    [recipeId, name, liked ? 1 : 0],
+  );
+}
+
+export async function getShoppingPlan(): Promise<ShoppingPlan | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ payload: string }>(
+    'SELECT payload FROM shopping_plans WHERE id = 1',
+  );
+  if (!row) return null;
+  try {
+    return JSON.parse(row.payload) as ShoppingPlan;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveShoppingPlan(plan: ShoppingPlan): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO shopping_plans (id, payload, saved_at) VALUES (1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, saved_at = excluded.saved_at`,
+    [JSON.stringify(plan), new Date().toISOString()],
   );
 }

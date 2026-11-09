@@ -16,7 +16,7 @@ export function deriveWorkoutState(plannedType: string, done: boolean): WorkoutC
 
 // ── Nutrition block ───────────────────────────────────────────────────────────
 //   no macro goals set     → 'no-goals' (show "Set your targets", not broken rings)
-//   goals set, nothing eaten → 'empty'   (rings at 0 + "Log your first meal")
+//   goals set, nothing eaten → 'empty'   (rings at 0 + "Open the cookbook")
 //   goals set, food logged  → 'tracking' (filled rings)
 // "Goals" here = the ring macros (protein/carbs/fat); the kcal bar handles its
 // own null-target case separately.
