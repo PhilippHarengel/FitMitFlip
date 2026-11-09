@@ -9,6 +9,8 @@ import { StatusBar } from 'expo-status-bar';
 import HomeScreen from './screens/HomeScreen';
 import WorkoutScreen from './screens/WorkoutScreen';
 import FoodScreen from './screens/FoodScreen';
+import RecipeScreen from './screens/RecipeScreen';
+import { FoodSectionProvider } from './screens/foodSection';
 import { DateProvider } from './components/DateContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, type Theme } from './theme';
@@ -40,9 +42,12 @@ function WorkoutStackScreen() {
 
 function FoodStackScreen() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="FoodMain" component={FoodScreen} />
-    </Stack.Navigator>
+    <FoodSectionProvider>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="FoodMain" component={FoodScreen} />
+        <Stack.Screen name="Recipe" component={RecipeScreen} />
+      </Stack.Navigator>
+    </FoodSectionProvider>
   );
 }
 

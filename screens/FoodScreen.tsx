@@ -1,452 +1,804 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
-import { useFocusEffect } from '@react-navigation/native';
-import DateNavigator from '../components/DateNavigator';
-import { useSelectedDate } from '../components/DateContext';
-import { Screen, Card, ListSection, ListRow, Sheet, SwipeRow, Icon, MealLogConfirmSheet, MealEditSheet } from '../components/ui';
-import { useTheme, type Theme } from '../theme';
-import { lookupBarcode, searchByName, type ProductResult } from '../api/openFoodFacts';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { loadCookbook, requestPlan, wochenplanConfig } from '../api/wochenplan';
+import { Screen, Card, ListSection, ListRow, Button } from '../components/ui';
 import {
-  deleteFoodLogEntry,
-  deleteFoodLogGroup,
-  getFoodByBarcode,
-  getFoodLogForDate,
-  getMeals,
-  deleteMeal,
-  logFood,
-  toDateString,
-  upsertFood,
-  type FoodLogEntry,
-  type Food,
-  type Meal,
+  listRecipeDrafts,
+  getShoppingPlan,
+  listRecipeOpinions,
+  saveShoppingPlan,
+  setRecipeOpinion,
+  today,
+  type RecipeDraft,
 } from '../db/queries';
-import { today } from '../db/queries';
+import { useTheme, type Theme } from '../theme';
+import {
+  MEALS,
+  absencesFromSkips,
+  buildPlanPayload,
+  categoryForItem,
+  formatAmount,
+  insertShoppingLine,
+  isShoppingPlan,
+  planWindow,
+  pruneSkips,
+  skipDayLabel,
+  stepDayCount,
+  toggleSkipDay,
+  toggleSkipMeal,
+  slotTitle,
+  type CookbookRecipe,
+  type PlanSlot,
+  type PlanWindowDay,
+  type ShoppingPlan,
+  type SkipMap,
+} from '../lib/shoppingPlan';
+import { useFoodSection, type FoodSectionName } from './foodSection';
 
-// A product staged for the serving sheet, with where it came from so the DB
-// write records the right source ('manual' entries never expire from cache).
-type PendingFood = ProductResult & { source: 'api' | 'manual' };
+const MEAL_LABELS = [
+  ['Breakfast', 'fruehstueck'],
+  ['Lunch', 'mittagessen'],
+  ['Dinner', 'abendessen'],
+] as const;
 
 export default function FoodScreen() {
   const t = useTheme();
-  const { date, setDate } = useSelectedDate();
-  const [foodLog, setFoodLog] = useState<(FoodLogEntry & Food)[]>([]);
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [mealToLog, setMealToLog] = useState<number | null>(null);
-  const [editMealId, setEditMealId] = useState<number | 'new' | null>(null);
-
-  const [query, setQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<ProductResult[]>([]);
-  const [searching, setSearching] = useState(false);
-
-  const [showCamera, setShowCamera] = useState(false);
-  const scanningRef = useRef(false);
-  const [permission, requestPermission] = useCameraPermissions();
+  const navigation = useNavigation<any>();
+  const { section, setSection } = useFoodSection();
+  const [recipes, setRecipes] = useState<CookbookRecipe[]>([]);
+  const [drafts, setDrafts] = useState<RecipeDraft[]>([]);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<ShoppingPlan | null>(null);
+  const [planError, setPlanError] = useState<{ id: number; text: string } | null>(null);
+  const [listStatus, setListStatus] = useState<'received' | 'missing' | null>(null);
+  const errorSeq = useRef(0);
+  const [days, setDays] = useState('7');
+  const [startToday, setStartToday] = useState(false);
+  const [skips, setSkips] = useState<SkipMap>({});
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [composing, setComposing] = useState(true);
+  const [opinions, setOpinions] = useState<Record<string, { liked: boolean; name: string }>>({});
+  const opened = useRef(false);
+  const anchor = today();
+  const windowDays = useMemo(
+    () => planWindow(anchor, Number(days), startToday),
+    [anchor, days, startToday],
+  );
 
   useEffect(() => {
-    if (!showCamera) scanningRef.current = false;
-  }, [showCamera]);
-
-  const [manualVisible, setManualVisible] = useState(false);
-  const [manualPrefill, setManualPrefill] = useState('');
-  const [manualBarcode, setManualBarcode] = useState<string | null>(null);
-  const [servingProduct, setServingProduct] = useState<PendingFood | null>(null);
-
-  const dateStr = toDateString(date);
+    const allowed = new Set(windowDays.map((day) => day.date));
+    setSkips((current) => pruneSkips(current, allowed));
+  }, [windowDays]);
 
   const load = useCallback(async () => {
-    const [log, mealList] = await Promise.all([getFoodLogForDate(dateStr), getMeals()]);
-    setFoodLog(log);
-    setMeals(mealList);
-  }, [dateStr]);
+    const [book, stored, draftRows, opinionRows] = await Promise.all([
+      loadCookbook(wochenplanConfig()),
+      getShoppingPlan(),
+      listRecipeDrafts(),
+      listRecipeOpinions(),
+    ]);
+    if ('fehler' in book) {
+      setBookError(book.fehler);
+      setRecipes([]);
+    } else {
+      setBookError(null);
+      setRecipes(book.rezepte);
+    }
+    setDrafts(draftRows);
+    setPlan(stored);
+    setOpinions(Object.fromEntries(opinionRows.map((row) => [row.recipeId, { liked: row.liked, name: row.name }])));
+    if (!opened.current) {
+      opened.current = true;
+      setComposing(stored == null);
+    }
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // ── Search ────────────────────────────────────────────────────────────────
-  async function handleSearch() {
-    if (!query.trim()) return;
-    setSearching(true);
-    setSearchResults([]);
-    const results = await searchByName(query.trim());
-    setSearchResults(results);
-    setSearching(false);
-  }
-
-  // ── Barcode scan ────────────────────────────────────────────────────────────
-  async function handleOpenCamera() {
-    if (!permission?.granted) {
-      const { granted } = await requestPermission();
-      if (!granted) { Alert.alert('Camera required', 'Allow camera access in Settings to scan barcodes.'); return; }
-    }
-    setShowCamera(true);
-  }
-
-  async function handleBarcode({ data }: BarcodeScanningResult) {
-    if (scanningRef.current) return;
-    scanningRef.current = true; // synchronous — blocks subsequent callbacks immediately
-    setShowCamera(false);
-
-    // 1. Local cache first — your own manual entries and recent API results.
-    const cached = await getFoodByBarcode(data);
-    if (cached) {
-      setServingProduct({
-        barcode: cached.barcode,
-        name: cached.name,
-        nutriments: {
-          kcal_per_100g: cached.kcal_per_100g,
-          protein_g: cached.protein_g,
-          carbs_g: cached.carbs_g,
-          fat_g: cached.fat_g,
-          incomplete: [cached.kcal_per_100g, cached.protein_g, cached.carbs_g, cached.fat_g].some(v => v == null),
-        },
-        source: cached.source,
-      });
-      return;
-    }
-
-    // 2. Not cached — ask OpenFoodFacts.
-    const product = await lookupBarcode(data);
-    if (product) {
-      setServingProduct({ ...product, source: 'api' });
-      return;
-    }
-
-    // 3. Nobody has it — let the user enter it once, saved against this barcode.
-    Alert.alert('Not found', `"${data}" is not in OpenFoodFacts. Add it once and the next scan finds it instantly.`, [
-      { text: 'Add manually', onPress: () => { setManualPrefill(''); setManualBarcode(data); setManualVisible(true); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
-  // ── Add product to log ──────────────────────────────────────────────────────
-  function handleSelectProduct(product: ProductResult) {
-    setSearchResults([]);
-    setQuery('');
-    setServingProduct({ ...product, source: 'api' });
-  }
-
-  function handleManualSave(product: ProductResult) {
-    setServingProduct({ ...product, source: 'manual' });
-    setManualBarcode(null);
-  }
-
-  async function handleConfirmServing(servingG: number) {
-    if (!servingProduct) return;
-    const foodId = await upsertFood({
-      barcode: servingProduct.barcode,
-      name: servingProduct.name,
-      kcal_per_100g: servingProduct.nutriments.kcal_per_100g,
-      protein_g: servingProduct.nutriments.protein_g,
-      carbs_g: servingProduct.nutriments.carbs_g,
-      fat_g: servingProduct.nutriments.fat_g,
-      cached_at: today(),
-      source: servingProduct.source,
-    });
-    await logFood(dateStr, foodId, servingG);
-    setServingProduct(null);
-    await load();
-  }
-
-  // Swipe-to-delete: a deliberate gesture + tap on Delete, so no extra confirm.
-  async function removeEntry(id: number) {
-    await deleteFoodLogEntry(id);
-    await load();
-  }
-
-  async function removeGroup(groupId: string) {
-    await deleteFoodLogGroup(groupId);
-    await load();
-  }
-
-  async function handleDeleteMeal(id: number) {
-    await deleteMeal(id);
-    await load();
-  }
-
-  type LogGroup = { groupId: string | null; mealName: string | null; items: (FoodLogEntry & Food)[] };
-  function groupFoodLog(entries: (FoodLogEntry & Food)[]): LogGroup[] {
-    const groups: LogGroup[] = [];
-    const seen = new Map<string, LogGroup>();
-    for (const e of entries) {
-      if (!e.group_id) {
-        groups.push({ groupId: null, mealName: null, items: [e] });
-      } else if (seen.has(e.group_id)) {
-        seen.get(e.group_id)!.items.push(e);
-      } else {
-        const g: LogGroup = { groupId: e.group_id, mealName: e.meal_name, items: [e] };
-        groups.push(g);
-        seen.set(e.group_id, g);
+  async function submitPlan() {
+    if (sending) return;
+    setSending(true);
+    try {
+      const blocked = Object.values(opinions).filter((item) => !item.liked).map((item) => item.name);
+      const hint = [note.trim(), blocked.length ? `Diese Gerichte gefallen nicht: ${blocked.join(', ')}` : '']
+        .filter(Boolean)
+        .join('. ');
+      const payload = buildPlanPayload({
+        days: Number(days),
+        startToday,
+        absences: absencesFromSkips(windowDays, skips),
+        note: hint,
+        date: today(),
+      }, historyPlan(plan, opinions));
+      const result = await requestPlan(wochenplanConfig(), payload);
+      if (!isShoppingPlan(result)) {
+        errorSeq.current += 1;
+        setPlanError({ id: errorSeq.current, text: result.fehler });
+        setListStatus('missing');
+        return;
       }
+      await saveShoppingPlan(result);
+      setPlan(result);
+      setPlanError(null);
+      setListStatus('received');
+      setComposing(false);
+    } finally {
+      setSending(false);
     }
-    return groups;
   }
+
+  const segment = (
+    <View style={{ flexDirection: 'row', backgroundColor: t.colors.card, borderRadius: t.radius.control, padding: 2 }}>
+      {(['Cookbook', 'Plan', 'List'] as FoodSectionName[]).map((label) => {
+        const selected = section === label;
+        return (
+          <Pressable
+            key={label}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => setSection(label)}
+            style={{
+              flex: 1,
+              minHeight: 36,
+              borderRadius: t.radius.control,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: selected ? t.colors.accent : 'transparent',
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: '600', color: selected ? '#FFFFFF' : t.colors.label }}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
   return (
-    <Screen topSafeArea header={<DateNavigator date={date} onChange={setDate} maximumDate={new Date()} />}>
-      {/* Search + scan */}
-      <View style={{ flexDirection: 'row', gap: t.spacing.sm }}>
-        <TextInput
-          style={{ flex: 1, backgroundColor: t.colors.card, color: t.colors.label, borderRadius: t.radius.control, paddingHorizontal: t.spacing.md, height: 44, fontSize: 16 }}
-          placeholder="Search food…"
-          placeholderTextColor={t.colors.secondaryLabel}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
+    <Screen topSafeArea header={segment}>
+      {section === 'Cookbook' ? (
+        <Cookbook
+          recipes={recipes}
+          drafts={drafts}
+          error={bookError}
+          onOpenRecipe={(recipeId) => navigation.navigate('Recipe', { recipeId })}
+          onOpenDraft={(draftId) => navigation.navigate('Recipe', { draftId })}
+          onNewDraft={() => navigation.navigate('Recipe', { draftId: 'new' })}
         />
-        <Pressable
-          onPress={handleOpenCamera}
-          style={({ pressed }) => ({ width: 44, height: 44, borderRadius: t.radius.control, backgroundColor: t.colors.accent, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.85 : 1 })}
-        >
-          <Icon name="barcode.viewfinder" color="#FFFFFF" size={24} />
-        </Pressable>
-      </View>
-
-      {searching && <ActivityIndicator color={t.colors.secondaryLabel} />}
-
-      {/* Search results */}
-      {searchResults.length > 0 && (
-        <ListSection header="Results">
-          {searchResults.map((r, i) => (
-            <ListRow
-              key={i}
-              title={r.name}
-              value={r.nutriments.kcal_per_100g != null ? `${Math.round(r.nutriments.kcal_per_100g)} kcal/100g` : undefined}
-              onPress={() => handleSelectProduct(r)}
-              chevron={false}
-            />
-          ))}
-          <ListRow
-            title={`Add "${query}" manually`}
-            iconColor={t.colors.accent}
-            icon="plus"
-            chevron={false}
-            onPress={() => { setSearchResults([]); setManualPrefill(query); setManualBarcode(null); setManualVisible(true); }}
+      ) : section === 'Plan' ? (
+        composing || !plan ? (
+          <Plan
+            error={planError}
+            listStatus={listStatus}
+            onDismissError={() => setPlanError(null)}
+            days={days}
+            startToday={startToday}
+            windowDays={windowDays}
+            skips={skips}
+            note={note}
+            sending={sending}
+            onDays={setDays}
+            onStartToday={setStartToday}
+            onPressDay={(date) => setSkips((current) => toggleSkipDay(current, date))}
+            onPressMeal={(date, meal) => setSkips((current) => toggleSkipMeal(current, date, meal))}
+            onNote={setNote}
+            onSubmit={submitPlan}
           />
-        </ListSection>
-      )}
-
-      {/* Meals */}
-      <ListSection header="Meals">
-        {meals.map(meal => (
-          <SwipeRow key={meal.id} onDelete={() => handleDeleteMeal(meal.id)}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: t.spacing.lg, minHeight: 48, backgroundColor: t.colors.card }}>
-              <Text style={{ flex: 1, fontSize: 17, color: t.colors.label }} numberOfLines={1}>{meal.name}</Text>
-              <TouchableOpacity onPress={() => setEditMealId(meal.id)} hitSlop={8} style={{ paddingHorizontal: t.spacing.sm }}>
-                <Text style={{ color: t.colors.secondaryLabel, fontSize: 15 }}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setMealToLog(meal.id)} hitSlop={8} style={{ paddingLeft: t.spacing.sm }}>
-                <Text style={{ color: t.colors.accent, fontSize: 15, fontWeight: '600' }}>Log</Text>
-              </TouchableOpacity>
-            </View>
-          </SwipeRow>
-        ))}
-        <ListRow icon="plus" iconColor={t.colors.accent} title="New Meal" chevron={false} onPress={() => setEditMealId('new')} />
-      </ListSection>
-
-      {/* Food log */}
-      {foodLog.length === 0 ? (
-        <Card>
-          <Text style={{ fontSize: 15, color: t.colors.secondaryLabel, textAlign: 'center' }}>
-            No food logged yet.{'\n'}Search or scan a barcode to add entries.
-          </Text>
-        </Card>
+        ) : (
+          <DishReview
+            plan={plan}
+            opinions={opinions}
+            onOpinion={(recipeId, name, liked) => {
+              setOpinions((current) => ({ ...current, [recipeId]: { liked, name } }));
+              void setRecipeOpinion(recipeId, name, liked);
+            }}
+            onOpenRecipe={(recipeId) => navigation.navigate('Recipe', { recipeId })}
+            onNewPlan={() => setComposing(true)}
+          />
+        )
       ) : (
-        <ListSection header="Logged today">
-          {groupFoodLog(foodLog).map((group, gi) => {
-            if (!group.groupId) {
-              const entry = group.items[0];
-              const kcal = entry.kcal_per_100g != null ? Math.round((entry.serving_g / 100) * entry.kcal_per_100g) : null;
-              return (
-                <SwipeRow key={entry.id} onDelete={() => removeEntry(entry.id)}>
-                  <View style={{ paddingVertical: 12, paddingHorizontal: t.spacing.lg, minHeight: 48, justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 16, color: t.colors.label }} numberOfLines={1}>{entry.name}</Text>
-                    <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 2 }}>
-                      {entry.serving_g}g{kcal != null ? ` · ${kcal} kcal` : ''}
-                    </Text>
-                  </View>
-                </SwipeRow>
-              );
-            }
-            const groupKcal = group.items.reduce((sum, e) => {
-              if (e.kcal_per_100g == null) return sum;
-              return sum + (e.serving_g / 100) * e.kcal_per_100g;
-            }, 0);
-            return (
-              <React.Fragment key={group.groupId}>
-                <SwipeRow onDelete={() => removeGroup(group.groupId!)}>
-                  <View style={{ paddingVertical: 10, paddingHorizontal: t.spacing.lg, backgroundColor: t.colors.card }}>
-                    <Text style={{ fontSize: 15, fontWeight: '600', color: t.colors.label }}>{group.mealName ?? 'Meal'}</Text>
-                    <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 1 }}>
-                      {group.items.length} items{groupKcal > 0 ? ` · ${Math.round(groupKcal)} kcal` : ''}
-                    </Text>
-                  </View>
-                </SwipeRow>
-                {group.items.map(entry => {
-                  const kcal = entry.kcal_per_100g != null ? Math.round((entry.serving_g / 100) * entry.kcal_per_100g) : null;
-                  return (
-                    <SwipeRow key={entry.id} onDelete={() => removeEntry(entry.id)}>
-                      <View style={{ paddingVertical: 10, paddingHorizontal: t.spacing.lg, paddingLeft: t.spacing.xl + t.spacing.md, backgroundColor: t.colors.card }}>
-                        <Text style={{ fontSize: 15, color: t.colors.label }} numberOfLines={1}>{entry.name}</Text>
-                        <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: 1 }}>
-                          {entry.serving_g}g{kcal != null ? ` · ${kcal} kcal` : ''}
-                        </Text>
-                      </View>
-                    </SwipeRow>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-        </ListSection>
+        <ShoppingList
+          plan={plan}
+          listStatus={listStatus}
+          onChange={(next) => {
+            setPlan(next);
+            void saveShoppingPlan(next);
+          }}
+          onNewPlan={() => { setComposing(true); setSection('Plan'); }}
+        />
       )}
-
-      {/* Camera */}
-      <Modal visible={showCamera} animationType="slide" onRequestClose={() => setShowCamera(false)}>
-        <CameraView
-          style={{ flex: 1 }}
-          facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128'] }}
-          onBarcodeScanned={handleBarcode}
-        >
-          <SafeAreaView style={{ flex: 1, justifyContent: 'space-between', alignItems: 'center', padding: 24 }}>
-            <TouchableOpacity style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 }} onPress={() => setShowCamera(false)}>
-              <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>✕  Close</Text>
-            </TouchableOpacity>
-            <View style={{ width: 240, height: 160, borderWidth: 2, borderColor: '#fff', borderRadius: 8 }} />
-            <Text style={{ color: '#fff', fontSize: 14, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: t.radius.control }}>Point at a barcode</Text>
-          </SafeAreaView>
-        </CameraView>
-      </Modal>
-
-      <ManualEntrySheet
-        visible={manualVisible}
-        prefillName={manualPrefill}
-        barcode={manualBarcode}
-        onClose={() => setManualVisible(false)}
-        onSave={handleManualSave}
-      />
-      <ServingSheet
-        product={servingProduct}
-        onClose={() => setServingProduct(null)}
-        onConfirm={handleConfirmServing}
-      />
-      <MealLogConfirmSheet
-        mealId={mealToLog}
-        date={dateStr}
-        onClose={() => setMealToLog(null)}
-        onLogged={() => { setMealToLog(null); load(); }}
-      />
-      <MealEditSheet
-        mealId={editMealId}
-        visible={editMealId != null}
-        onClose={() => setEditMealId(null)}
-        onSaved={() => { setEditMealId(null); load(); }}
-      />
     </Screen>
   );
 }
 
-// ── Manual entry sheet ────────────────────────────────────────────────────────
-function ManualEntrySheet({ visible, onClose, onSave, prefillName = '', barcode = null }: {
-  visible: boolean; onClose: () => void; onSave: (r: ProductResult) => void; prefillName?: string; barcode?: string | null;
+function Cookbook({
+  recipes, drafts, error, onOpenRecipe, onOpenDraft, onNewDraft,
+}: {
+  recipes: CookbookRecipe[];
+  drafts: RecipeDraft[];
+  error: string | null;
+  onOpenRecipe: (id: string) => void;
+  onOpenDraft: (id: number) => void;
+  onNewDraft: () => void;
 }) {
   const t = useTheme();
-  const [name, setName] = useState(prefillName);
-  const [kcal, setKcal] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fat, setFat] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setName(prefillName);
-      setKcal(''); setProtein(''); setCarbs(''); setFat('');
-    }
-  }, [visible, prefillName]);
-
-  function handleSave() {
-    if (!name.trim()) { Alert.alert('Name required', 'Enter a product name.'); return; }
-    onSave({
-      barcode,
-      name: name.trim(),
-      nutriments: {
-        kcal_per_100g: kcal ? parseFloat(kcal) : null,
-        protein_g: protein ? parseFloat(protein) : null,
-        carbs_g: carbs ? parseFloat(carbs) : null,
-        fat_g: fat ? parseFloat(fat) : null,
-        incomplete: !kcal || !protein || !carbs || !fat,
-      },
-    });
-    onClose();
-  }
-
   return (
-    <Sheet visible={visible} title="Add Manually" onClose={onClose} actionLabel="Save" onAction={handleSave}>
-      <Field theme={t} label="Product name" value={name} onChange={setName} autoFocus autoCapitalize="words" keyboard="default" />
-      {barcode ? <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>Barcode {barcode} — saved so the next scan finds it instantly.</Text> : null}
-      <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.xs }}>Values per 100g</Text>
-      <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
-        <View style={{ flex: 1 }}><Field theme={t} label="kcal" value={kcal} onChange={setKcal} /></View>
-        <View style={{ flex: 1 }}><Field theme={t} label="Protein (g)" value={protein} onChange={setProtein} /></View>
-      </View>
-      <View style={{ flexDirection: 'row', gap: t.spacing.md }}>
-        <View style={{ flex: 1 }}><Field theme={t} label="Carbs (g)" value={carbs} onChange={setCarbs} /></View>
-        <View style={{ flex: 1 }}><Field theme={t} label="Fat (g)" value={fat} onChange={setFat} /></View>
-      </View>
-    </Sheet>
-  );
-}
-
-// ── Serving sheet ─────────────────────────────────────────────────────────────
-function ServingSheet({ product, onClose, onConfirm }: {
-  product: ProductResult | null; onClose: () => void; onConfirm: (serving: number) => void;
-}) {
-  const t = useTheme();
-  const [serving, setServing] = useState('100');
-
-  useEffect(() => { if (product) setServing('100'); }, [product]);
-
-  if (!product) return null;
-
-  const g = parseFloat(serving) || 0;
-  const kcal = product.nutriments.kcal_per_100g != null ? (g / 100) * product.nutriments.kcal_per_100g : null;
-
-  function confirm() {
-    if (g > 0) { onConfirm(g); } else { Alert.alert('Invalid serving', 'Enter a value greater than 0.'); }
-  }
-
-  return (
-    <Sheet visible={!!product} title={product.name} onClose={onClose} actionLabel="Add" onAction={confirm}>
-      {product.nutriments.incomplete && (
-        <Text style={{ fontSize: 13, color: t.colors.warning, backgroundColor: t.colors.card, borderRadius: t.radius.control, padding: t.spacing.md }}>
-          ⚠ Some nutrition data is missing for this product.
-        </Text>
+    <>
+      {error ? <Text style={{ color: t.colors.warning, fontSize: 15 }}>{error}</Text> : null}
+      {recipes.length > 0 && (
+        <ListSection header="Cookbook">
+          {recipes.map((recipe) => (
+            <ListRow
+              key={recipe.id}
+              title={recipe.name}
+              onPress={() => onOpenRecipe(recipe.id)}
+            />
+          ))}
+        </ListSection>
       )}
-      <Field theme={t} label="Serving (g — use gram equivalent for liquids, e.g. 200 for 200ml)" value={serving} onChange={setServing} autoFocus selectTextOnFocus />
-      {kcal != null && <Text style={{ fontSize: 15, color: t.colors.secondaryLabel }}>{Math.round(kcal)} kcal for {g}g</Text>}
-    </Sheet>
+      <ListSection header="Drafts">
+        {drafts.map((draft) => (
+          <ListRow key={draft.id} title={draft.name} onPress={() => onOpenDraft(draft.id)} />
+        ))}
+        <ListRow title="New draft" icon="plus" chevron={false} onPress={onNewDraft} />
+      </ListSection>
+    </>
   );
 }
 
-// ── Themed input field ────────────────────────────────────────────────────────
-function Field({ theme, label, value, onChange, keyboard = 'decimal-pad', autoFocus, autoCapitalize = 'none', selectTextOnFocus }: {
-  theme: Theme; label: string; value: string; onChange: (v: string) => void;
-  keyboard?: 'decimal-pad' | 'default'; autoFocus?: boolean; autoCapitalize?: 'none' | 'words'; selectTextOnFocus?: boolean;
+function SkipColumn({
+  day, meals, onToggleDay, onToggleMeal,
+}: {
+  day: PlanWindowDay;
+  meals: readonly (typeof MEALS)[number][];
+  onToggleDay: () => void;
+  onToggleMeal: (meal: (typeof MEALS)[number]) => void;
 }) {
+  const t = useTheme();
+  const label = skipDayLabel(day);
+  const all = meals.length === MEALS.length;
+  const some = meals.length > 0;
   return (
-    <View>
-      <Text style={{ fontSize: 13, color: theme.colors.secondaryLabel, marginBottom: 4 }}>{label}</Text>
-      <TextInput
-        style={{ backgroundColor: theme.colors.card, color: theme.colors.label, borderRadius: theme.radius.control, padding: 12, fontSize: 16 }}
-        value={value}
-        onChangeText={onChange}
-        keyboardType={keyboard}
-        autoFocus={autoFocus}
-        autoCapitalize={autoCapitalize}
-        selectTextOnFocus={selectTextOnFocus}
-        placeholderTextColor={theme.colors.secondaryLabel}
-      />
+    <View style={{ width: 108, gap: 6 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: all }}
+        onPress={onToggleDay}
+        style={({ pressed }) => ({
+          minHeight: 44,
+          borderRadius: t.radius.control,
+          borderWidth: 1,
+          borderColor: some ? t.colors.accent : t.colors.separator,
+          backgroundColor: all ? t.colors.accent : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Text style={{ fontSize: 13, fontWeight: '600', color: all ? '#FFFFFF' : t.colors.label }}>{label}</Text>
+      </Pressable>
+      {MEALS.map((meal) => {
+        const on = meals.includes(meal);
+        return (
+          <Pressable
+            key={meal}
+            accessibilityRole="button"
+            accessibilityLabel={`${label} ${meal}`}
+            accessibilityState={{ selected: on }}
+            onPress={() => onToggleMeal(meal)}
+            style={({ pressed }) => ({
+              minHeight: 36,
+              borderRadius: t.radius.full,
+              borderWidth: 1,
+              borderColor: on ? t.colors.accent : t.colors.separator,
+              backgroundColor: on ? t.colors.accent : 'transparent',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{ fontSize: 12, fontWeight: on ? '600' : '400', color: on ? '#FFFFFF' : t.colors.label }}>{meal}</Text>
+          </Pressable>
+        );
+      })}
     </View>
+  );
+}
+
+function historyPlan(
+  plan: ShoppingPlan | null,
+  opinions: Record<string, { liked: boolean; name: string }>,
+): ShoppingPlan | null {
+  if (!plan) return null;
+  const hide = (slot: PlanSlot): PlanSlot =>
+    slot.id && opinions[slot.id]?.liked ? { ...slot, name: undefined } : slot;
+  return {
+    ...plan,
+    tage: plan.tage.map((day) => ({
+      ...day,
+      fruehstueck: hide(day.fruehstueck),
+      mittagessen: hide(day.mittagessen),
+      abendessen: hide(day.abendessen),
+    })),
+  };
+}
+
+function OpinionButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        minHeight: 32,
+        paddingHorizontal: 12,
+        borderRadius: t.radius.full,
+        borderWidth: 1,
+        borderColor: active ? t.colors.accent : t.colors.separator,
+        backgroundColor: active ? t.colors.accent : 'transparent',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Text style={{ fontSize: 13, fontWeight: '600', color: active ? '#FFFFFF' : t.colors.label }}>{label.split(' ')[0]}</Text>
+    </Pressable>
+  );
+}
+
+function ErrorNote({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+      <Text style={{ flex: 1, color: t.colors.warning, fontSize: 15 }}>{message}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Dismiss error" onPress={onDismiss} hitSlop={8}>
+        <Text style={{ color: t.colors.warning, fontSize: 18, fontWeight: '600', lineHeight: 22 }}>×</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ListOutcome({ status }: { status: 'received' | 'missing' | null }) {
+  const t = useTheme();
+  if (!status) return null;
+  const received = status === 'received';
+  return (
+    <Text style={{ marginTop: t.spacing.sm, fontSize: 13, color: received ? t.colors.success : t.colors.warning }}>
+      {received ? 'Einkaufsliste: erhalten' : 'Einkaufsliste: fehlt'}
+    </Text>
+  );
+}
+
+function Plan(props: {
+  error: { id: number; text: string } | null;
+  listStatus: 'received' | 'missing' | null;
+  onDismissError: () => void;
+  days: string;
+  startToday: boolean;
+  windowDays: PlanWindowDay[];
+  skips: SkipMap;
+  note: string;
+  sending: boolean;
+  onDays: (value: string) => void;
+  onStartToday: (value: boolean) => void;
+  onPressDay: (date: string) => void;
+  onPressMeal: (date: string, meal: (typeof MEALS)[number]) => void;
+  onNote: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <>
+      {props.error ? <ErrorNote key={props.error.id} message={props.error.text} onDismiss={props.onDismissError} /> : null}
+      <Card>
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: 4 }}>Days</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fewer days"
+              onPress={() => props.onDays(stepDayCount(props.days, -1))}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                borderRadius: t.radius.control,
+                borderWidth: 1,
+                borderColor: t.colors.separator,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 22, color: t.colors.label }}>−</Text>
+            </Pressable>
+            <TextInput
+              accessibilityLabel="Days"
+              value={props.days}
+              onChangeText={props.onDays}
+              keyboardType="number-pad"
+              style={{
+                flex: 1,
+                color: t.colors.label,
+                fontSize: 22,
+                fontWeight: '600',
+                minHeight: 44,
+                textAlign: 'center',
+                borderWidth: 1,
+                borderColor: t.colors.separator,
+                borderRadius: t.radius.control,
+              }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More days"
+              onPress={() => props.onDays(stepDayCount(props.days, 1))}
+              style={({ pressed }) => ({
+                width: 44,
+                height: 44,
+                borderRadius: t.radius.control,
+                borderWidth: 1,
+                borderColor: t.colors.separator,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <Text style={{ fontSize: 22, color: t.colors.label }}>+</Text>
+            </Pressable>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Start today"
+            accessibilityState={{ selected: props.startToday }}
+            onPress={() => props.onStartToday(!props.startToday)}
+            style={({ pressed }) => ({
+              marginTop: t.spacing.md,
+              minHeight: 44,
+              borderRadius: t.radius.control,
+              borderWidth: 1,
+              borderColor: props.startToday ? t.colors.accent : t.colors.separator,
+              backgroundColor: props.startToday ? t.colors.accent : 'transparent',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{ fontSize: 17, fontWeight: '600', color: props.startToday ? '#FFFFFF' : t.colors.label }}>Start today</Text>
+          </Pressable>
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.lg }}>Skip</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: t.spacing.sm, marginHorizontal: -t.spacing.lg }}
+            contentContainerStyle={{ gap: t.spacing.sm, paddingHorizontal: t.spacing.lg }}
+          >
+            {props.windowDays.map((day) => (
+              <SkipColumn
+                key={day.date}
+                day={day}
+                meals={props.skips[day.date] ?? []}
+                onToggleDay={() => props.onPressDay(day.date)}
+                onToggleMeal={(meal) => props.onPressMeal(day.date, meal)}
+              />
+            ))}
+          </ScrollView>
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.lg, marginBottom: 4 }}>Note</Text>
+          <TextInput
+            accessibilityLabel="Note"
+            value={props.note}
+            onChangeText={props.onNote}
+            style={{ color: t.colors.label, fontSize: 17, minHeight: 44 }}
+          />
+          <View style={{ marginTop: t.spacing.lg }}>
+            <Button title="New plan" onPress={props.onSubmit} disabled={props.sending} />
+            <ListOutcome status={props.listStatus} />
+          </View>
+        </Card>
+    </>
+  );
+}
+
+function renderShoppingGroup(
+  header: string,
+  rows: { item: { kategorie: string; name: string; menge: number; einheit: string; checked?: boolean }; index: number }[],
+  t: Theme,
+  openLine: (index: number) => void,
+  toggleChecked: (index: number) => void,
+) {
+  if (rows.length === 0) return null;
+  let category = '';
+  return (
+    <ListSection header={header}>
+      {rows.map(({ item, index }) => {
+        const showCategory = item.kategorie !== category;
+        category = item.kategorie;
+        return (
+          <View key={`${header}-${item.kategorie}-${item.name}-${index}`}>
+            {showCategory ? (
+              <View style={{
+                backgroundColor: t.colors.track,
+                paddingHorizontal: t.spacing.lg,
+                paddingVertical: 10,
+                borderTopWidth: index > 0 ? 1 : 0,
+                borderTopColor: t.colors.separator,
+              }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', letterSpacing: 0.8, color: t.colors.accent, textTransform: 'uppercase' }}>
+                  {item.kategorie}
+                </Text>
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Check ${item.name}`}
+                accessibilityState={{ checked: item.checked === true }}
+                onPress={() => toggleChecked(index)}
+                hitSlop={8}
+                style={{ paddingLeft: t.spacing.lg, paddingVertical: 10 }}
+              >
+                <View style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: item.checked ? t.colors.accent : t.colors.separator,
+                  backgroundColor: item.checked ? t.colors.accent : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  {item.checked ? <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>✓</Text> : null}
+                </View>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`} onPress={() => openLine(index)} style={{ flex: 1 }}>
+                <View style={{ paddingHorizontal: t.spacing.md, paddingVertical: 10, opacity: item.checked ? 0.45 : 1 }}>
+                  <Text style={{ fontSize: 17, color: t.colors.label, textDecorationLine: item.checked ? 'line-through' : 'none' }}>{item.name}</Text>
+                  <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>{formatAmount(item.menge)} {item.einheit}</Text>
+                </View>
+              </Pressable>
+            </View>
+          </View>
+        );
+      })}
+    </ListSection>
+  );
+}
+
+function emptyShoppingPlan(): ShoppingPlan {
+  return {
+    tage: [],
+    einkauf: [],
+    nichtLesbar: [],
+    vorrat: [],
+    summen: { kcal: 0, protein: 0, kohlenhydrate: 0, fett: 0 },
+  };
+}
+
+function parseAmount(value: string): number {
+  const amount = Number(value.trim().replace(',', '.'));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function ShoppingList({
+  plan, listStatus, onChange, onNewPlan,
+}: {
+  plan: ShoppingPlan | null;
+  listStatus: 'received' | 'missing' | null;
+  onChange: (plan: ShoppingPlan) => void;
+  onNewPlan: () => void;
+}) {
+  const t = useTheme();
+  const [editing, setEditing] = useState<number | 'new' | null>(null);
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [unit, setUnit] = useState('g');
+  const lines = plan?.einkauf ?? [];
+
+  function openNew() {
+    setEditing('new');
+    setName('');
+    setAmount('');
+    setUnit('g');
+  }
+
+  function openLine(index: number) {
+    const line = lines[index];
+    setEditing(index);
+    setName(line.name);
+    setAmount(formatAmount(line.menge));
+    setUnit(line.einheit);
+  }
+
+  function saveLine() {
+    const trimmed = name.trim();
+    if (!trimmed || editing == null) return;
+    const nextLine = {
+      kategorie: editing === 'new' ? categoryForItem(trimmed, lines) : lines[editing].kategorie,
+      name: trimmed,
+      menge: parseAmount(amount),
+      einheit: unit.trim() || 'g',
+      checked: editing === 'new' ? false : lines[editing].checked,
+    };
+    const einkauf = editing === 'new'
+      ? insertShoppingLine(lines, nextLine)
+      : lines.map((line, index) => index === editing ? nextLine : line);
+    onChange({ ...(plan ?? emptyShoppingPlan()), einkauf });
+    setEditing(null);
+  }
+
+  function toggleChecked(index: number) {
+    const einkauf = lines.map((line, i) => (i === index ? { ...line, checked: !line.checked } : line));
+    onChange({ ...(plan ?? emptyShoppingPlan()), einkauf });
+  }
+
+  function removeLine() {
+    if (typeof editing !== 'number') return;
+    onChange({ ...(plan ?? emptyShoppingPlan()), einkauf: lines.filter((_, index) => index !== editing) });
+    setEditing(null);
+  }
+
+  return (
+    <>
+      <View style={{ marginBottom: t.spacing.md }}>
+        <Button title="Add item" variant="tinted" onPress={openNew} />
+      </View>
+      {editing != null ? (
+        <Card>
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginBottom: 4 }}>Name</Text>
+          <TextInput
+            accessibilityLabel="Item name"
+            value={name}
+            onChangeText={setName}
+            style={{ color: t.colors.label, fontSize: 17, minHeight: 44 }}
+          />
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.md, marginBottom: 4 }}>Amount</Text>
+          <TextInput
+            accessibilityLabel="Amount"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            style={{ color: t.colors.label, fontSize: 17, minHeight: 44 }}
+          />
+          <Text style={{ fontSize: 13, color: t.colors.secondaryLabel, marginTop: t.spacing.md, marginBottom: 4 }}>Unit</Text>
+          <TextInput
+            accessibilityLabel="Unit"
+            value={unit}
+            onChangeText={setUnit}
+            style={{ color: t.colors.label, fontSize: 17, minHeight: 44 }}
+          />
+          <View style={{ marginTop: t.spacing.lg, gap: t.spacing.sm }}>
+            <Button title="Save" onPress={saveLine} />
+            {typeof editing === 'number' ? <Button title="Remove" variant="tinted" destructive onPress={removeLine} /> : null}
+          </View>
+        </Card>
+      ) : null}
+      {lines.length === 0 && editing == null ? (
+        <Text style={{ fontSize: 17, color: t.colors.secondaryLabel }}>No list yet.</Text>
+      ) : null}
+      {renderShoppingGroup('Shopping', lines.map((item, index) => ({ item, index })).filter((row) => !row.item.checked), t, openLine, toggleChecked)}
+      {renderShoppingGroup('Shopped', lines.map((item, index) => ({ item, index })).filter((row) => row.item.checked), t, openLine, toggleChecked)}
+      {plan?.vorrat && plan.vorrat.length > 0 && (
+        <ListSection header="Pantry">
+          {plan.vorrat.map((item, index) => {
+            const amount = item.menge == null ? item.name : `${formatAmount(item.menge)} ${item.einheit} ${item.name}`;
+            return (
+              <View key={`${item.rezept}-${item.name}-${index}`} style={{ paddingHorizontal: t.spacing.lg, paddingVertical: 10, gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm }}>
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`In stock ${item.name}`}
+                    accessibilityState={{ checked: item.checked === true }}
+                    onPress={() => {
+                      const vorrat = plan.vorrat!.map((row, i) => i === index ? { ...row, checked: !row.checked } : row);
+                      onChange({ ...plan, vorrat });
+                    }}
+                    hitSlop={8}
+                  >
+                    <View style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: item.checked ? t.colors.accent : t.colors.separator,
+                      backgroundColor: item.checked ? t.colors.accent : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      {item.checked ? <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>✓</Text> : null}
+                    </View>
+                  </Pressable>
+                  <View style={{ flex: 1, opacity: item.checked ? 0.45 : 1 }}>
+                    <Text style={{ fontSize: 17, color: t.colors.label, textDecorationLine: item.checked ? 'line-through' : 'none' }}>{amount}</Text>
+                    <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>{item.rezept}</Text>
+                  </View>
+                </View>
+                {item.checked ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Buy ${item.name}`}
+                    onPress={() => {
+                      const line = {
+                        kategorie: categoryForItem(item.name, lines),
+                        name: item.name,
+                        menge: item.menge ?? 1,
+                        einheit: item.einheit || 'Stk',
+                        checked: false,
+                      };
+                      onChange({
+                        ...plan,
+                        einkauf: insertShoppingLine(lines, line),
+                        vorrat: plan.vorrat!.filter((_, i) => i !== index),
+                      });
+                    }}
+                  >
+                    <Text style={{ color: t.colors.accent, fontSize: 15, fontWeight: '600' }}>Buy</Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+        </ListSection>
+      )}
+      {plan && plan.nichtLesbar.length > 0 && (
+        <ListSection header="Not readable">
+          {plan.nichtLesbar.map((line) => (
+            <ListRow key={line} title={line} chevron={false} />
+          ))}
+        </ListSection>
+      )}
+      <View>
+        <Button title="New plan" variant="tinted" onPress={onNewPlan} />
+        <ListOutcome status={listStatus} />
+      </View>
+    </>
+  );
+}
+
+function DishReview({
+  plan, opinions, onOpinion, onOpenRecipe, onNewPlan,
+}: {
+  plan: ShoppingPlan;
+  opinions: Record<string, { liked: boolean; name: string }>;
+  onOpinion: (recipeId: string, name: string, liked: boolean) => void;
+  onOpenRecipe: (id: string) => void;
+  onNewPlan: () => void;
+}) {
+  const t = useTheme();
+  return (
+    <>
+      <Text style={{ fontSize: 13, color: t.colors.secondaryLabel }}>Dishes come first. The shopping list is under List.</Text>
+      {plan.tage.map((day) => (
+        <View key={day.datum} style={{ paddingTop: t.spacing.md }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: t.colors.secondaryLabel }}>
+            {day.wochentag} {day.datum}
+          </Text>
+          {MEAL_LABELS.map(([label, key]) => {
+            const slot = day[key];
+            const title = `${label} · ${slotTitle(slot)}`;
+            const opinion = slot.id ? opinions[slot.id] : undefined;
+            return (
+              <View key={key} style={{ paddingTop: t.spacing.sm, gap: t.spacing.sm }}>
+                {slot.id ? (
+                  <ListRow title={title} onPress={() => onOpenRecipe(slot.id!)} />
+                ) : (
+                  <ListRow title={title} chevron={false} />
+                )}
+                {slot.id && slot.name ? (
+                  <View style={{ flexDirection: 'row', gap: t.spacing.sm, paddingHorizontal: t.spacing.lg }}>
+                    <OpinionButton label={`Like ${slot.name}`} active={opinion?.liked === true} onPress={() => onOpinion(slot.id!, slot.name!, true)} />
+                    <OpinionButton label={`No ${slot.name}`} active={opinion?.liked === false} onPress={() => onOpinion(slot.id!, slot.name!, false)} />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ))}
+      <View style={{ marginTop: t.spacing.lg }}>
+        <Button title="New plan" variant="tinted" onPress={onNewPlan} />
+      </View>
+    </>
   );
 }

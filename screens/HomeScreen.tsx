@@ -164,7 +164,7 @@ export default function HomeScreen() {
             {nutritionState === 'empty' && (
               <TouchableOpacity onPress={() => navigation.navigate('Food')} style={{ marginTop: t.spacing.md }}>
                 <Text style={{ fontSize: 14, fontWeight: '600', color: t.colors.accent, textAlign: 'center' }}>
-                  Log your first meal ›
+                  Open the cookbook
                 </Text>
               </TouchableOpacity>
             )}

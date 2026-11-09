@@ -3,7 +3,33 @@ import * as SQLite from 'expo-sqlite';
 // Each entry is a SQL statement that runs once, in order.
 // Append new statements at the end — never modify existing ones.
 // PRAGMA user_version tracks how many have run.
-const MIGRATIONS: string[] = [
+export const FOOD_SHOPPING_MIGRATIONS: string[] = [
+  `ALTER TABLE food_log ADD COLUMN recipe_id TEXT`,
+  `CREATE TABLE IF NOT EXISTS recipe_drafts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    ingredients TEXT NOT NULL,
+    instructions TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS shopping_plans (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    payload TEXT NOT NULL,
+    saved_at TEXT NOT NULL
+  )`,
+  `ALTER TABLE recipe_drafts ADD COLUMN video TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE recipe_drafts ADD COLUMN confirmed INTEGER NOT NULL DEFAULT 0`,
+  `CREATE TABLE IF NOT EXISTS recipe_videos (
+    recipe_id TEXT PRIMARY KEY,
+    url TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS recipe_opinions (
+    recipe_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    liked INTEGER NOT NULL
+  )`,
+];
+
+export const MIGRATIONS: string[] = [
   // v1 — initial schema
   `CREATE TABLE IF NOT EXISTS workouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,6 +107,8 @@ const MIGRATIONS: string[] = [
     meal_name TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_food_log_group ON food_log(group_id)`,
+  // v7 — cookbook portions, local drafts, last successful shopping plan
+  ...FOOD_SHOPPING_MIGRATIONS,
 ];
 
 let _db: SQLite.SQLiteDatabase | null = null;
