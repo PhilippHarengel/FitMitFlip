@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Text, TextInput } from 'react-native';
+import { Image, Text, TextInput } from 'react-native';
+import { bookPhotoKey, draftPhotoKey } from '../../lib/recipePhotoKey';
+import { clearRecipePhotos, setRecipePhoto } from '../../lib/recipePhotos';
 import { loadCookbook, requestPlan } from '../../api/wochenplan';
 import FoodScreen from '../FoodScreen';
 import RecipeScreen from '../RecipeScreen';
@@ -169,6 +171,16 @@ function allText(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findAllByType(Text).map((node) => flatten(node.props.children)).join('\n');
 }
 
+function podTitles(renderer: TestRenderer.ReactTestRenderer, testID: string) {
+  const titles: string[] = [];
+  for (const node of renderer.root.findAll((item) => item.props?.testID === testID && typeof item.props.onPress === 'function')) {
+    if (node.parent?.props?.testID === testID) continue;
+    const title = flatten(node.findAllByType(Text)[0]?.props.children);
+    if (title && !titles.includes(title)) titles.push(title);
+  }
+  return titles;
+}
+
 function pressLabel(renderer: TestRenderer.ReactTestRenderer, label: string) {
   const text = renderer.root.findAllByType(Text).find((node) => flatten(node.props.children) === label);
   if (!text) throw new Error(`missing ${label}\n${allText(renderer)}`);
@@ -231,6 +243,7 @@ async function renderHost() {
 }
 
 beforeEach(() => {
+  clearRecipePhotos();
   state().drafts = [];
   state().plan = null;
   state().eaten.clear();
@@ -251,6 +264,8 @@ describe('food tab', () => {
     expect(text).toContain('List');
     expect(text).toContain('Haferporridge');
     expect(text).toContain('New draft');
+    expect(podTitles(renderer, 'cookbook-pod')).toEqual(['Haferporridge', 'Hähnchen Reis']);
+    expect(podTitles(renderer, 'draft-pod')).toEqual([]);
     expect(text).not.toContain('Search food');
     expect(text).not.toContain('New Meal');
     expect(text).not.toContain('Logged today');
@@ -430,6 +445,8 @@ describe('food tab', () => {
     await press(renderer, 'Save');
     expect(allText(renderer)).toContain('Geheimsuppe');
     expect(allText(renderer)).toContain('DRAFTS');
+    expect(podTitles(renderer, 'draft-pod')).toEqual(['Geheimsuppe']);
+    expect(podTitles(renderer, 'cookbook-pod')).not.toContain('Geheimsuppe');
 
     await press(renderer, 'Geheimsuppe');
     await act(async () => {
