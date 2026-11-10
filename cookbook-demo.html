@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kochbuch</title>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --card: #ffffff;
+      --label: #1c1c1e;
+      --secondary: #6c6c70;
+      --accent: #5856d6;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 20px rgba(28, 28, 30, 0.08);
+      --radius: 18px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #e5e5ea;
+      color: var(--label);
+      font-family: var(--font);
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+    }
+
+    .phone {
+      width: min(100%, 430px);
+      min-height: 100vh;
+      background: var(--bg);
+      position: relative;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 18px 16px 12px;
+      background: color-mix(in srgb, var(--bg) 86%, transparent);
+      backdrop-filter: blur(16px);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 4px 16px 28px;
+    }
+
+    .pod {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      border: 0;
+      border-radius: var(--radius);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      text-align: left;
+      cursor: pointer;
+      color: inherit;
+      font: inherit;
+    }
+
+    .pod:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .pod:active { transform: scale(0.98); }
+
+    .pod-name {
+      padding: 12px 12px 8px;
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 3.1em;
+    }
+
+    .pod-photo,
+    .detail-photo {
+      background:
+        radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.55), transparent 46%),
+        linear-gradient(155deg, var(--a), var(--b));
+    }
+
+    .pod-photo {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pod-photo img,
+    .detail-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .detail {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      background: var(--bg);
+      overflow: auto;
+      padding: 18px 16px 40px;
+    }
+
+    .detail.open { display: block; }
+
+    .back {
+      border: 0;
+      background: transparent;
+      color: var(--accent);
+      font: inherit;
+      font-size: 17px;
+      font-weight: 600;
+      padding: 4px 0 18px;
+      cursor: pointer;
+    }
+
+    .detail h2 {
+      margin: 0 0 14px;
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: -0.03em;
+    }
+
+    .detail-photo {
+      height: 180px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+
+    .detail h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--secondary);
+    }
+
+    .detail ul {
+      margin: 0 0 18px;
+      padding-left: 18px;
+    }
+
+    .detail li,
+    .detail p {
+      font-size: 17px;
+      line-height: 1.4;
+    }
+
+    .detail p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header>
+      <h1>Kochbuch</h1>
+    </header>
+    <main class="grid" id="grid"></main>
+    <section class="detail" id="detail" hidden></section>
+  </div>
+  <script>
+    const photosByName = {
+      "24-Stunden-Pizzateig (Teichner)": "images/pizza-dough.jpg?v=3",
+      "Baguette Magique (Sallys)": "images/baguette-magique.jpg?v=3",
+      "Bananenbrot": "images/banana-bread.jpg?v=5",
+      "Bandnudeln mit Sahnesauce, Pilzen und Huhn": "images/cream-noodles.jpg?v=2",
+    };
+
+    const dishes = [
+      {
+        name: "24-Stunden-Pizzateig (Teichner)",
+        a: "#f6e7c8",
+        b: "#e6d3a1",
+        ingredients: ["Weizenmehl Typ 00", "Wasser", "Meersalz", "Hefe"],
+        steps: "Autolyse, kneten, 18 Stunden gehen lassen, in drei Teiglinge teilen."
+      },
+      {
+        name: "Baguette Magique (Sallys)",
+        a: "#f3e2c4",
+        b: "#d7a15a",
+        ingredients: ["Hefe", "Wasser", "Weizenmehl Type 550", "Salz"],
+        steps: "Nur verrühren, zwei Stunden gehen lassen, bei 240 Grad mit Dampf backen."
+      },
+      {
+        name: "Bananenbrot",
+        a: "#f0d2a4",
+        b: "#c47a3a",
+        ingredients: ["Banane", "Ei", "Haferflocken", "Zimt"],
+        steps: "Bananen zerdrücken, Teig mischen, etwa 55 Minuten backen, mit Butter und Honig servieren."
+      },
+      {
+        name: "Bandnudeln mit Sahnesauce, Pilzen und Huhn",
+        a: "#f8e7c2",
+        b: "#e2b15a",
+        ingredients: ["Bandnudeln", "Champignons", "Sahne", "Hühnerbrust"],
+        steps: "Hähnchen anbraten, Pilze dazu, Sahne angießen, Nudeln und Petersilie unterheben."
+      },
+      {
+        name: "Haferporridge",
+        a: "#f3e6cf",
+        b: "#c4a574",
+        ingredients: ["Haferflocken", "Milch", "Banane", "Zimt"],
+        steps: "Hafer mit Milch köcheln. Banane in Scheiben und etwas Zimt darauf."
+      },
+      {
+        name: "Linsensuppe",
+        a: "#f3c48a",
+        b: "#c4652d",
+        ingredients: ["Rote Linsen", "Karotte", "Zwiebel", "Brühe"],
+        steps: "Gemüse anschwitzen. Linsen mit Brühe etwa fünfzehn Minuten köcheln."
+      },
+      {
+        name: "Käsespätzle",
+        a: "#ffe9a8",
+        b: "#d4a017",
+        ingredients: ["Spätzle", "Bergkäse", "Zwiebel", "Butter"],
+        steps: "Spätzle mit Käse schichten. Röstzwiebeln aus Butter obenauf."
+      },
+      {
+        name: "Gemüsepfanne",
+        a: "#d7efc4",
+        b: "#3f8f5b",
+        ingredients: ["Zucchini", "Paprika", "Aubergine", "Olivenöl"],
+        steps: "Gemüse in heißem Öl anbraten und mit Salz und Kräutern abschmecken."
+      },
+      {
+        name: "Hähnchen mit Reis",
+        a: "#f8d7c0",
+        b: "#d4724a",
+        ingredients: ["Hähnchenbrust", "Reis", "Zitrone", "Joghurt"],
+        steps: "Brust braten, Reis kochen. Mit Zitrone und einem Löffel Joghurt servieren."
+      },
+      {
+        name: "Apfelkuchen",
+        a: "#f8d0c4",
+        b: "#c4504a",
+        ingredients: ["Äpfel", "Mehl", "Butter", "Zimt"],
+        steps: "Teig ausrollen, Apfelscheiben und Zimt darauf, bei 180 Grad backen."
+      }
+    ];
+
+    const grid = document.getElementById("grid");
+    const detail = document.getElementById("detail");
+
+    function paint(el, dish) {
+      el.style.setProperty("--a", dish.a);
+      el.style.setProperty("--b", dish.b);
+    }
+
+    function fillPhoto(el, dish) {
+      paint(el, dish);
+      const src = photosByName[dish.name];
+      if (!src) return;
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = src;
+      img.addEventListener("error", () => img.remove());
+      el.appendChild(img);
+    }
+
+    dishes.forEach((dish, index) => {
+      const button = document.createElement("button");
+      button.className = "pod";
+      button.type = "button";
+      paint(button, dish);
+      const name = document.createElement("span");
+      name.className = "pod-name";
+      name.textContent = dish.name;
+      const photo = document.createElement("div");
+      photo.className = "pod-photo";
+      fillPhoto(photo, dish);
+      button.append(name, photo);
+      button.addEventListener("click", () => openDish(index));
+      grid.appendChild(button);
+    });
+
+    function openDish(index) {
+      const dish = dishes[index];
+      detail.replaceChildren();
+      paint(detail, dish);
+
+      const back = document.createElement("button");
+      back.className = "back";
+      back.type = "button";
+      back.textContent = "Schließen";
+      back.addEventListener("click", closeDish);
+
+      const title = document.createElement("h2");
+      title.textContent = dish.name;
+
+      const frame = document.createElement("div");
+      frame.className = "detail-photo";
+      fillPhoto(frame, dish);
+
+      const ingTitle = document.createElement("h3");
+      ingTitle.textContent = "Zutaten";
+      const list = document.createElement("ul");
+      dish.ingredients.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        list.appendChild(li);
+      });
+
+      const stepTitle = document.createElement("h3");
+      stepTitle.textContent = "Zubereitung";
+      const steps = document.createElement("p");
+      steps.textContent = dish.steps;
+
+      detail.append(back, title, frame, ingTitle, list, stepTitle, steps);
+      detail.hidden = false;
+      detail.classList.add("open");
+      detail.scrollTop = 0;
+      back.focus();
+    }
+
+    function closeDish() {
+      detail.classList.remove("open");
+      detail.hidden = true;
+      detail.replaceChildren();
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && detail.classList.contains("open")) closeDish();
+    });
+  </script>
+</body>
+</html>
