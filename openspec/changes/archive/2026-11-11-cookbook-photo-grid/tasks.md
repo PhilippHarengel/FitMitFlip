@@ -18,4 +18,4 @@
 
 - `food-shopping-list` ist archiviert. `openspec/specs/cookbook` ist das Ziel der `MODIFIED`-Anforderungen.
 - Diesen Change archivieren, wenn die Tasks erledigt sind, und das Archiv prüfen.
-- Fotos an Buchgerichte binden, erst wenn Name oder Rezept-ID entschieden ist. Das Raster und das Löschen der Beispiele hängen nicht daran.
+- Der Foto-Schlüssel ist in `cookbook-recipe-ids` entschieden. Die Dateien hängen in `cookbook-remaining-photos`.

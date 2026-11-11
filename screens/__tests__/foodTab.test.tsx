@@ -171,6 +171,15 @@ function allText(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findAllByType(Text).map((node) => flatten(node.props.children)).join('\n');
 }
 
+function photoUris(renderer: TestRenderer.ReactTestRenderer) {
+  const uris: string[] = [];
+  for (const node of renderer.root.findAll((item) => item.props?.testID === 'recipe-photo')) {
+    const uri = node.props.source?.uri;
+    if (typeof uri === 'string' && !uris.includes(uri)) uris.push(uri);
+  }
+  return uris;
+}
+
 function podTitles(renderer: TestRenderer.ReactTestRenderer, testID: string) {
   const titles: string[] = [];
   for (const node of renderer.root.findAll((item) => item.props?.testID === testID && typeof item.props.onPress === 'function')) {
@@ -319,6 +328,36 @@ describe('food tab', () => {
     expect(allText(renderer)).not.toContain('Eaten');
     await press(renderer, 'Undo');
     expect(allText(renderer)).toContain('Eaten');
+  });
+
+  it('shows a photo only for the book id that has one when names match', async () => {
+    const twin = { ...porridge, id: 'dddddddddddddddddddddddddddddddd' };
+    (loadCookbook as jest.Mock).mockResolvedValue({ rezepte: [porridge, twin] });
+    setRecipePhoto(bookPhotoKey(porridge.id)!, { uri: 'hafer' });
+    const renderer = await renderHost();
+    const pods = renderer.root.findAll((item) => item.props?.testID === 'cookbook-pod' && typeof item.props.onPress === 'function' && item.parent?.props?.testID !== 'cookbook-pod');
+    expect(pods).toHaveLength(2);
+    expect(photoUris(renderer)).toEqual(['hafer']);
+  });
+
+  it('keeps a draft photo on the same id after the draft is renamed', async () => {
+    setRecipePhoto(draftPhotoKey(1)!, { uri: 'draft-photo' });
+    const renderer = await renderHost();
+    await press(renderer, 'New draft');
+    await act(async () => {
+      const name = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Name');
+      name?.props.onChangeText('Geheimsuppe');
+    });
+    await press(renderer, 'Save');
+    expect(photoUris(renderer)).toEqual(['draft-photo']);
+    await press(renderer, 'Geheimsuppe');
+    await act(async () => {
+      const name = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Name');
+      name?.props.onChangeText('Geheimsuppe Neu');
+    });
+    await press(renderer, 'Save');
+    expect(allText(renderer)).toContain('Geheimsuppe Neu');
+    expect(photoUris(renderer)).toEqual(['draft-photo']);
   });
 
   it('shows a cookbook error and no invented list', async () => {
