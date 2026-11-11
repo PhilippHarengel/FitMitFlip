@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { loadCookbook, requestPlan, wochenplanConfig } from '../api/wochenplan';
-import { Screen, Card, ListSection, ListRow, Button } from '../components/ui';
+import { Screen, Card, ListSection, ListRow, Button, Icon } from '../components/ui';
 import {
   listRecipeDrafts,
   getShoppingPlan,
@@ -37,6 +37,7 @@ import {
 import { BOOK_PHOTO_FILES } from '../lib/bookPhotoFiles';
 import { bindBookPhotos, bookPhoto, draftPhoto, type PhotoSource } from '../lib/recipePhotos';
 import { useFoodSection, type FoodSectionName } from './foodSection';
+import { useCookbookTiles } from '../lib/cookbookTiles';
 
 const MEAL_LABELS = [
   ['Breakfast', 'fruehstueck'],
@@ -218,7 +219,7 @@ export default function FoodScreen() {
 const POD_SWATCHES = ['#e2b15a', '#7ea84a', '#e09a2b', '#c9844a', '#c4a574', '#c4652d', '#d4a017', '#3f8f5b', '#d4724a', '#c4504a'];
 
 function Pod({
-  title, mark, swatch, photo, onPress, testID,
+  title, mark, swatch, photo, onPress, testID, large, plus,
 }: {
   title: string;
   mark?: string;
@@ -226,15 +227,23 @@ function Pod({
   photo: PhotoSource | null;
   onPress: () => void;
   testID: string;
+  large: boolean;
+  plus?: boolean;
 }) {
-  const t = useTheme();
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} testID={testID} style={{ width: '50%', padding: 6 }}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      testID={testID}
+      style={large ? { width: '100%' } : { width: '50%', padding: 6 }}
+    >
       <View
         style={{
-          aspectRatio: 1,
-          borderRadius: t.radius.control,
-          backgroundColor: t.colors.card,
+          width: '100%',
+          height: large ? 188 : undefined,
+          aspectRatio: large ? undefined : 1,
+          borderRadius: large ? 18 : 22,
+          backgroundColor: swatch,
           overflow: 'hidden',
           shadowColor: '#1C1C1E',
           shadowOpacity: 0.08,
@@ -243,17 +252,40 @@ function Pod({
           elevation: 2,
         }}
       >
-        <Text numberOfLines={2} style={{ paddingHorizontal: 12, paddingTop: 12, fontSize: 15, fontWeight: '600', lineHeight: 18, color: t.colors.label, minHeight: 48 }}>
-          {title}
-        </Text>
-        {mark ? (
-          <Text style={{ paddingHorizontal: 12, paddingBottom: 4, fontSize: 12, fontWeight: '600', color: t.colors.secondaryLabel }}>{mark}</Text>
-        ) : null}
         {photo ? (
-          <Image source={photo} testID="recipe-photo" resizeMode="cover" style={{ flex: 1, width: '100%' }} />
+          <Image
+            source={photo}
+            testID="recipe-photo"
+            resizeMode="cover"
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+          />
         ) : (
-          <View testID="recipe-swatch" style={{ flex: 1, backgroundColor: swatch }} />
+          <View testID="recipe-swatch" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: swatch }} />
         )}
+        {plus ? (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="plus" size={large ? 48 : 36} color="#8A8A8E" weight="medium" />
+          </View>
+        ) : null}
+        <View
+          style={{
+            position: 'absolute',
+            left: large ? 10 : 8,
+            right: large ? 10 : 8,
+            bottom: large ? 10 : 8,
+            borderRadius: large ? 12 : 10,
+            backgroundColor: 'rgba(255,255,255,0.84)',
+            paddingHorizontal: large ? 12 : 8,
+            paddingVertical: large ? 8 : 6,
+          }}
+        >
+          <Text numberOfLines={2} style={{ fontSize: large ? 16 : 13, fontWeight: '600', lineHeight: large ? 20 : 16, color: '#111111' }}>
+            {title}
+          </Text>
+          {mark ? (
+            <Text style={{ marginTop: 2, fontSize: 12, fontWeight: '600', color: '#3A3A3C' }}>{mark}</Text>
+          ) : null}
+        </View>
       </View>
     </Pressable>
   );
@@ -274,37 +306,42 @@ function Cookbook({
   onNewDraft: () => void;
 }) {
   const t = useTheme();
+  const { largeTiles } = useCookbookTiles();
+  const recipePods = recipes.map((recipe, index) => (
+    <Pod
+      key={recipe.id}
+      title={recipe.name}
+      swatch={POD_SWATCHES[index % POD_SWATCHES.length]}
+      photo={bookPhoto(recipe.id)}
+      onPress={() => onOpenRecipe(recipe.id)}
+      testID="cookbook-pod"
+      large={largeTiles}
+    />
+  ));
+  const draftPods = (
+    <>
+      {drafts.map((draft, index) => (
+        <Pod
+          key={draft.id}
+          title={draft.name}
+          mark="Draft"
+          swatch={POD_SWATCHES[(index + 3) % POD_SWATCHES.length]}
+          photo={draftPhoto(draft.id)}
+          onPress={() => onOpenDraft(draft.id)}
+          testID="draft-pod"
+          large={largeTiles}
+        />
+      ))}
+      <Pod title="New draft" swatch={t.colors.track} photo={null} onPress={onNewDraft} testID="new-draft" large={largeTiles} plus />
+    </>
+  );
   return (
     <>
       {error ? <Text style={{ color: t.colors.warning, fontSize: 15 }}>{error}</Text> : null}
-      <PodGrid>
-        {recipes.map((recipe, index) => (
-          <Pod
-            key={recipe.id}
-            title={recipe.name}
-            swatch={POD_SWATCHES[index % POD_SWATCHES.length]}
-            photo={bookPhoto(recipe.id)}
-            onPress={() => onOpenRecipe(recipe.id)}
-            testID="cookbook-pod"
-          />
-        ))}
-      </PodGrid>
+      {largeTiles ? <View style={{ gap: 14 }}>{recipePods}</View> : <PodGrid>{recipePods}</PodGrid>}
       <View style={{ gap: t.spacing.sm }}>
         <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: 0.3, marginLeft: 16, color: t.colors.secondaryLabel }}>DRAFTS</Text>
-        <PodGrid>
-          {drafts.map((draft, index) => (
-            <Pod
-              key={draft.id}
-              title={draft.name}
-              mark="Draft"
-              swatch={POD_SWATCHES[(index + 3) % POD_SWATCHES.length]}
-              photo={draftPhoto(draft.id)}
-              onPress={() => onOpenDraft(draft.id)}
-              testID="draft-pod"
-            />
-          ))}
-          <Pod title="New draft" swatch={t.colors.track} photo={null} onPress={onNewDraft} testID="new-draft" />
-        </PodGrid>
+        {largeTiles ? <View style={{ gap: 14 }}>{draftPods}</View> : <PodGrid>{draftPods}</PodGrid>}
       </View>
     </>
   );

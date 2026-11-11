@@ -14,6 +14,7 @@ import { FoodSectionProvider } from './screens/foodSection';
 import { DateProvider } from './components/DateContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme, type Theme } from './theme';
+import { CookbookTilesProvider } from './lib/cookbookTiles';
 
 // Real native iOS tab bar (native UITabBarController via react-native-bottom-tabs).
 // On iOS 26 built with Xcode 26 it renders system Liquid Glass automatically — no
@@ -123,7 +124,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ErrorBoundary>
         <ThemeProvider>
-          <AppInner />
+          <CookbookTilesProvider>
+            <AppInner />
+          </CookbookTilesProvider>
         </ThemeProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>

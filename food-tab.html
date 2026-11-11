@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache">
+  <title>Food</title>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --card: #ffffff;
+      --label: #111111;
+      --secondary: #8a8a8e;
+      --accent: #5856d6;
+      --track: #e4e4e4;
+      --radius: 18px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --screen-w: 393px;
+      --screen-h: 852px;
+      --bezel: 12px;
+      --chassis-w: calc(var(--screen-w) + var(--bezel) * 2);
+      --chassis-h: calc(var(--screen-h) + var(--bezel) * 2);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #e5e5ea;
+      color: var(--label);
+      font-family: var(--font);
+      overflow: hidden;
+    }
+
+    body.stacked { height: auto; overflow: auto; }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: 100%;
+      height: 100%;
+      padding: 12px 16px 16px;
+      align-items: stretch;
+    }
+
+    body.stacked .compare {
+      height: auto;
+      grid-template-columns: minmax(0, 460px);
+      justify-content: center;
+      padding-bottom: 32px;
+    }
+
+    .col {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .col > h2 {
+      margin: 0 0 8px;
+      padding: 4px 4px 0;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .slot {
+      position: relative;
+      width: 100%;
+      flex: none;
+    }
+
+    .chassis {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: var(--chassis-w);
+      height: var(--chassis-h);
+      margin-left: calc(var(--chassis-w) / -2);
+      transform-origin: top center;
+      padding: var(--bezel);
+      border-radius: 58px;
+      background: #0c0c0e;
+      box-shadow:
+        inset 0 0 0 1.5px rgba(255, 255, 255, 0.22),
+        0 18px 44px rgba(0, 0, 0, 0.28);
+    }
+
+    .screen {
+      width: var(--screen-w);
+      height: var(--screen-h);
+      position: relative;
+      overflow: hidden;
+      border-radius: 46px;
+      background: var(--bg);
+      container-type: inline-size;
+    }
+
+    .status {
+      position: absolute;
+      z-index: 6;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 59px;
+      pointer-events: none;
+      color: #111;
+    }
+
+    .time {
+      position: absolute;
+      left: 28px;
+      top: 16px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .island {
+      position: absolute;
+      top: 11px;
+      left: 50%;
+      width: 126px;
+      height: 37px;
+      margin-left: -63px;
+      background: #000;
+      border-radius: 20px;
+    }
+
+    .sys {
+      position: absolute;
+      right: 22px;
+      top: 19px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .home {
+      position: absolute;
+      z-index: 6;
+      left: 50%;
+      bottom: 8px;
+      width: 134px;
+      height: 5px;
+      margin-left: -67px;
+      border-radius: 3px;
+      background: #111;
+      pointer-events: none;
+    }
+
+    .app {
+      position: absolute;
+      top: 59px;
+      right: 0;
+      bottom: 34px;
+      left: 0;
+      overflow: auto;
+      scrollbar-width: none;
+    }
+
+    .app::-webkit-scrollbar { display: none; }
+
+    .segment-bar {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 8px 16px;
+      background: var(--bg);
+    }
+
+    .segment {
+      display: flex;
+      padding: 2px;
+      border-radius: var(--radius);
+      background: var(--card);
+    }
+
+    .segment span {
+      flex: 1;
+      min-width: 0;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--label);
+    }
+
+    .segment .on {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    main { padding: 12px 16px 20px; }
+
+    .section-label {
+      margin: 16px 0 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: var(--secondary);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .pod {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #1c1c1e;
+      box-shadow: 0 4px 10px rgba(28, 28, 30, 0.08);
+    }
+
+    .pod img,
+    .pod .fill {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .pod .fill { background: var(--swatch, var(--track)); }
+
+    .name {
+      position: absolute;
+      z-index: 1;
+      margin: 0;
+    }
+
+    .name > span:first-child {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      outline: none;
+    }
+
+    /* Version 1 — name on the photo, dark fade at the top. */
+    .v1 .name {
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 10px 10px 8px;
+      color: #fff;
+      font-size: clamp(11px, 4cqi, 15px);
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+      background: linear-gradient(180deg, rgba(12, 12, 14, 0.78), rgba(12, 12, 14, 0.62));
+    }
+
+    .v1 .name::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      height: 18px;
+      background: linear-gradient(180deg, rgba(12, 12, 14, 0.62), rgba(12, 12, 14, 0));
+    }
+
+    /* Version 2 — frosted label sitting on the bottom of the photo. */
+    .v2 .pod { border-radius: 22px; }
+    .v2 .pod img { transform: scale(1.08); }
+
+    .v2 .name {
+      top: auto;
+      bottom: 8px;
+      left: 8px;
+      right: 8px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      color: #111;
+      font-size: clamp(11px, 3.5cqi, 13px);
+      font-weight: 650;
+      line-height: 1.25;
+      text-shadow: none;
+      background: rgba(255, 255, 255, 0.84);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      backdrop-filter: blur(16px) saturate(1.4);
+    }
+
+    /* Version 3 — large photo, frosted name inset on the bottom of the image. */
+    .v3 .grid {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background: transparent;
+      border-radius: 0;
+      overflow: visible;
+    }
+
+    .v3 .pod {
+      aspect-ratio: auto;
+      width: 100%;
+      height: 188px;
+      min-height: 0;
+      padding: 0;
+      border-radius: 18px;
+      background: #1c1c1e;
+      box-shadow: 0 4px 12px rgba(28, 28, 30, 0.08);
+    }
+
+    .v3 .pod img,
+    .v3 .pod .fill {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 0;
+      box-shadow: none;
+      display: block;
+    }
+
+    .v3 .name {
+      top: auto;
+      right: 10px;
+      bottom: 10px;
+      left: 10px;
+      margin: 0;
+      padding: 8px 12px;
+      border-radius: 12px;
+      color: #111;
+      font-family: var(--font);
+      font-size: 16px;
+      font-weight: 650;
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      text-shadow: none;
+      background: rgba(255, 255, 255, 0.72);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      backdrop-filter: blur(16px) saturate(1.4);
+    }
+
+    .v3 .name > span:first-child { min-width: 0; }
+  </style>
+</head>
+<body>
+  <div class="compare" id="compare"></div>
+  <script>
+    const SCREEN_W = 393;
+    const SCREEN_H = 852;
+    const BEZEL = 12;
+    const CHASSIS_W = SCREEN_W + BEZEL * 2;
+    const CHASSIS_H = SCREEN_H + BEZEL * 2;
+
+    const dishes = [
+      ["24-Stunden-Pizzateig (Teichner)", "images/pizza-dough.jpg"],
+      ["Baguette Magique (Sallys)", "images/baguette-magique.jpg"],
+      ["Bananenbrot", "images/banana-bread.jpg"],
+      ["Bandnudeln mit Sahnesauce, Pilzen und Huhn", "images/cream-noodles.jpg"],
+      ["Carbonara", "images/carbonara.jpg"],
+      ["Flammkuchen", "images/flammkuchen.jpg"],
+      ["Flammkuchen – Lachs & Frühlingszwiebel", "images/flammkuchen-lachs.jpg"],
+      ["Flammkuchen – Pilze & Thymian", "images/flammkuchen-pilze.jpg"],
+      ["Flammkuchen – Speck & Zwiebel", "images/flammkuchen-speck.jpg"],
+      ["Flammkuchen – Ziegenkäse, Honig & Walnuss", "images/flammkuchen-ziege.jpg"],
+      ["Gnocchi-Pfanne mit Hähnchen und Champignons", "images/gnocchi-pfanne.jpg"],
+      ["Sandwichtoast", "images/sandwichtoast.jpg"],
+      ["Schnitzel mit Gemüse und selbstgemachten Pommes (Cornflakes)", "images/schnitzel-cornflakes.jpg"],
+      ["Schnitzel mit Gemüse und selbstgemachten Pommes (Panko)", "images/schnitzel-panko.jpg"],
+      ["Chicken mit Sahnesauce, Reis und Brokkoli", "images/chicken-sahne-reis.jpg"],
+      ["Nudeln mit Chicken und Paprikasauce", "images/paprika-nudeln.jpg"],
+      ["Nudeln mit Chicken, Paprika-Tomaten-Käsesauce", "images/paprika-tomaten-nudeln.jpg"],
+      ["Lasagne", "images/lasagne.jpg"],
+      ["Lachsnudeln", "images/lachsnudeln.jpg"],
+      ["Teriyaki-Chicken mit Reis und Gemüse", "images/teriyaki-chicken.jpg"],
+      ["Toast mit Avocado und Ei", "images/toast-avocado.jpg"],
+      ["Schnitzel mit Gemüse und selbstgemachten Pommes", "images/schnitzel-pommes.jpg"],
+      ["Erdnussbutter Schwein Nudeln (Andy Cooks)", "images/peanut-noodles.jpg"],
+      ["Spanische Tortilla (Andy Cooks)", "images/spanish-tortilla.jpg"],
+      ["Caesar Salat", "images/caesar-salat.jpg"],
+      ["Jägerschnitzel mit Pommes", "images/jaegerschnitzel.jpg"]
+    ];
+
+    const variants = [
+      ["v1", "Version 1"],
+      ["v2", "Version 2"],
+      ["v3", "Version 3"]
+    ];
+
+    function tile(name, image, swatch) {
+      const pod = document.createElement("article");
+      pod.className = "pod";
+      if (image) {
+        const img = document.createElement("img");
+        img.alt = "";
+        img.src = image;
+        pod.appendChild(img);
+      } else {
+        const fill = document.createElement("div");
+        fill.className = "fill";
+        fill.style.setProperty("--swatch", swatch);
+        pod.appendChild(fill);
+      }
+      const label = document.createElement("p");
+      label.className = "name";
+      const text = document.createElement("span");
+      text.textContent = name;
+      label.appendChild(text);
+      pod.appendChild(label);
+      return pod;
+    }
+
+    function segment() {
+      const bar = document.createElement("div");
+      bar.className = "segment-bar";
+      const tabs = document.createElement("div");
+      tabs.className = "segment";
+      tabs.setAttribute("role", "tablist");
+      ["Cookbook", "Plan", "List"].forEach((name, index) => {
+        const tab = document.createElement("span");
+        tab.setAttribute("role", "tab");
+        tab.textContent = name;
+        if (index === 0) {
+          tab.className = "on";
+          tab.setAttribute("aria-selected", "true");
+        }
+        tabs.appendChild(tab);
+      });
+      bar.appendChild(tabs);
+      return bar;
+    }
+
+    function statusBar() {
+      const bar = document.createElement("div");
+      bar.className = "status";
+      bar.innerHTML =
+        '<span class="time">9:41</span>' +
+        '<span class="island"></span>' +
+        '<span class="sys">' +
+          '<svg viewBox="0 0 18 12" width="17" height="12" aria-hidden="true"><rect x="0" y="7" width="3" height="5" rx="0.6" fill="currentColor"/><rect x="4.8" y="4.5" width="3" height="7.5" rx="0.6" fill="currentColor"/><rect x="9.6" y="2" width="3" height="10" rx="0.6" fill="currentColor"/><rect x="14.4" y="0" width="3" height="12" rx="0.6" fill="currentColor"/></svg>' +
+          '<svg viewBox="0 0 16 12" width="15" height="12" aria-hidden="true"><path fill="currentColor" d="M8 2.4c2.5 0 4.7.9 6.4 2.4L15.6 3.6C13.6 1.7 11 0.6 8 0.6S2.4 1.7.4 3.6L1.6 4.8C3.3 3.3 5.5 2.4 8 2.4zm0 3.2c1.5 0 2.9.6 3.9 1.5l1.2-1.2C11.8 4.6 10 3.8 8 3.8S4.2 4.6 2.9 6l1.2 1.2C5.1 6.2 6.5 5.6 8 5.6zm0 3.2c.7 0 1.3.3 1.8.7L8 11.4 6.2 9.5c.5-.4 1.1-.7 1.8-.7z"/></svg>' +
+          '<svg viewBox="0 0 27 13" width="25" height="12" aria-hidden="true"><rect x="0.6" y="0.6" width="22" height="11.8" rx="3.2" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="2" y="2" width="16" height="9" rx="1.6" fill="currentColor"/><path fill="currentColor" opacity="0.45" d="M24.2 4.2h1.6a1.4 1.4 0 0 1 0 4.6h-1.6z"/></svg>' +
+        '</span>';
+      return bar;
+    }
+
+    const compare = document.getElementById("compare");
+    variants.forEach(([id, title]) => {
+      const col = document.createElement("section");
+      col.className = "col " + id;
+      const heading = document.createElement("h2");
+      heading.textContent = title;
+
+      const recipes = document.createElement("div");
+      recipes.className = "grid";
+      dishes.forEach(([name, image]) => recipes.appendChild(tile(name, image)));
+      const draftsLabel = document.createElement("p");
+      draftsLabel.className = "section-label";
+      draftsLabel.textContent = "DRAFTS";
+      const draftGrid = document.createElement("div");
+      draftGrid.className = "grid";
+      draftGrid.appendChild(tile("New draft", null, "#e4e4e4"));
+      const main = document.createElement("main");
+      main.append(recipes, draftsLabel, draftGrid);
+
+      const app = document.createElement("div");
+      app.className = "app";
+      app.append(segment(), main);
+
+      const screen = document.createElement("div");
+      screen.className = "screen";
+      screen.append(statusBar(), app, Object.assign(document.createElement("div"), { className: "home" }));
+
+      const chassis = document.createElement("div");
+      chassis.className = "chassis";
+      chassis.appendChild(screen);
+
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      slot.appendChild(chassis);
+
+      col.append(heading, slot);
+      compare.appendChild(col);
+    });
+
+    function fit() {
+      const rowScale = (compare.clientWidth - 32) / 3 / CHASSIS_W;
+      const stacked = rowScale < 0.38;
+      document.body.classList.toggle("stacked", stacked);
+      document.querySelectorAll(".col").forEach((col) => {
+        const slot = col.querySelector(".slot");
+        const heading = col.querySelector("h2");
+        const chassis = col.querySelector(".chassis");
+        const maxW = col.clientWidth;
+        const maxH = stacked
+          ? CHASSIS_H
+          : Math.max(120, col.clientHeight - heading.offsetHeight - 8);
+        const scale = Math.min(1, maxW / CHASSIS_W, maxH / CHASSIS_H);
+        chassis.style.transform = "scale(" + scale + ")";
+        slot.style.height = (CHASSIS_H * scale) + "px";
+      });
+    }
+
+    fit();
+    window.addEventListener("resize", fit);
+  </script>
+</body>
+</html>

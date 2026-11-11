@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Pressable, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
@@ -21,12 +21,14 @@ import {
   type Targets,
 } from '../db/queries';
 import { deriveWorkoutState, deriveNutritionState } from './todayState';
+import { useCookbookTiles } from '../lib/cookbookTiles';
 
 const EMPTY_TARGETS: Targets = { kcal: null, protein_g: null, carbs_g: null, fat_g: null };
 
 export default function HomeScreen() {
   const t = useTheme();
   const { accentKey, setAccentColor } = useAccentColor();
+  const { largeTiles, setLargeTiles } = useCookbookTiles();
   const navigation = useNavigation<any>(); // cross-tab navigate + setOptions; tab/stack types don't compose cleanly
   const { date, setDate } = useSelectedDate();
   const [macros, setMacros] = useState<DailyMacros>({ kcal: 0, protein_g: 0, carbs_g: 0, fat_g: 0 });
@@ -200,6 +202,17 @@ export default function HomeScreen() {
         onSave={handleSaveGoals}
       />
       <Sheet visible={settingsVisible} title="Settings" onClose={() => setSettingsVisible(false)}>
+        <View style={{ backgroundColor: t.colors.card, borderRadius: t.radius.card, overflow: 'hidden' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingHorizontal: t.spacing.lg, paddingVertical: 12, gap: 12 }}>
+            <Text style={{ flex: 1, fontSize: 17, color: t.colors.label }}>Große Kacheln</Text>
+            <Switch
+              accessibilityLabel="Große Kacheln"
+              value={largeTiles}
+              onValueChange={(on) => { void setLargeTiles(on); }}
+              trackColor={{ true: t.colors.accent, false: t.colors.track }}
+            />
+          </View>
+        </View>
         <ListSection>
           <ListRow
             icon="target"
