@@ -1,0 +1,33 @@
+---
+description: FitMitFlip UI polish. Use when changing screens, components, or theme so visual edits stay on the existing iOS tokens.
+globs: "{screens,components,theme}/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# UI polish
+
+FitMitFlip is a daily logger. Keep the native iOS look. Use `useTheme()` tokens. Leave copy alone; the content is the user's real data.
+
+## Spacing
+
+Use `t.spacing` only: `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24. Related items sit closer than the gap between sections.
+
+## Type
+
+Use `t.typography`. Build hierarchy with weight and `t.colors.secondaryLabel`. Home's kcal figure stays large (`fontSize` 48, `fontWeight` 800). That number is the focal point.
+
+## Color
+
+Accent is for the primary button, a switch, a selected control, and tappable tint text (Goals, Change, Plan). Section labels and category headers use `secondaryLabel`. Macro rings stay `protein` / `carbs` / `fat`. Filled controls use a white label. Every other color comes from `t.colors`.
+
+## Details
+
+Radius comes from `t.radius`: control 18, card 20, sheet 24, full 999. A nested corner is smaller than its parent. Dividers use `StyleSheet.hairlineWidth` and `t.colors.separator`. Cards stay flat. Add a shadow only when a tile floats on the same surface as the screen.
+
+## Focus
+
+Home leads with today's kcal and whether the workout is done. Settings and the accent picker stay in the sheet. Workout and Food stay dense: equal rows and tiles are correct there.
+
+## Motion
+
+Leave tab switches, set logging, toggles, and scrolling still. Animate only when the motion should stay attached to the finger (sheet, swipe, rest-timer cue). Follow the `animate-expo` skill for that work.

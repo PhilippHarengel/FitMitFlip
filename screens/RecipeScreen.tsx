@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Linking, Pressable, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { Image, Linking, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { loadCookbook, wochenplanConfig } from '../api/wochenplan';
 import { Screen, Button } from '../components/ui';
@@ -15,10 +15,17 @@ import {
   undoRecipePortion,
   updateRecipeDraft,
 } from '../db/queries';
+import { heroSwatch } from '../lib/cookbookSwatch';
+import { bookPhoto } from '../lib/recipePhotos';
+import { ingredientRows, methodParagraphs } from '../lib/recipeLines';
 import type { CookbookRecipe } from '../lib/shoppingPlan';
 import { useTheme } from '../theme';
 
 type RecipeParams = { recipeId?: string; draftId?: number | 'new' };
+
+function isHttp(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim());
+}
 
 export default function RecipeScreen() {
   const t = useTheme();
@@ -33,11 +40,16 @@ export default function RecipeScreen() {
   const [ingredients, setIngredients] = useState('');
   const [instructions, setInstructions] = useState('');
   const [video, setVideo] = useState('');
+  const [editingVideo, setEditingVideo] = useState(false);
   const [confirmed, setConfirmed] = useState(0);
+  const loadTicket = useRef(0);
 
   const load = useCallback(async () => {
+    const ticket = ++loadTicket.current;
+    const current = () => ticket === loadTicket.current;
     if (draftMode) {
       if (params.draftId === 'new') {
+        setError(null);
         setName('');
         setIngredients('');
         setInstructions('');
@@ -46,6 +58,7 @@ export default function RecipeScreen() {
         return;
       }
       const draft = await getRecipeDraft(Number(params.draftId));
+      if (!current()) return;
       if (!draft) {
         setError('This draft is gone.');
         return;
@@ -58,18 +71,27 @@ export default function RecipeScreen() {
       setConfirmed(draft.confirmed ? 1 : 0);
       return;
     }
+    const recipeId = params.recipeId;
+    setRecipe((shown) => (shown && shown.id === recipeId ? shown : null));
     const book = await loadCookbook(wochenplanConfig());
+    if (!current()) return;
     if ('fehler' in book) {
       setRecipe(null);
       setError(book.fehler);
       return;
     }
-    const found = book.rezepte.find((item) => item.id === params.recipeId) ?? null;
+    const found = book.rezepte.find((item) => item.id === recipeId) ?? null;
     setRecipe(found);
     setError(found ? null : 'This recipe is not in the cookbook.');
+    setEditingVideo(false);
     if (found) {
-      setVideo(await getRecipeVideo(found.id));
-      setEaten(await isRecipeEaten(found.id, today()));
+      const [savedVideo, alreadyEaten] = await Promise.all([
+        getRecipeVideo(found.id),
+        isRecipeEaten(found.id, today()),
+      ]);
+      if (!current()) return;
+      setVideo(savedVideo);
+      setEaten(alreadyEaten);
     }
   }, [draftMode, params.draftId, params.recipeId]);
 
@@ -109,12 +131,15 @@ export default function RecipeScreen() {
 
   async function saveBookVideo() {
     if (!recipe) return;
-    await saveRecipeVideo(recipe.id, video);
+    const next = video.trim();
+    await saveRecipeVideo(recipe.id, next);
+    setVideo(next);
+    setEditingVideo(false);
   }
 
   function openVideo() {
     const url = video.trim();
-    if (!/^https?:\/\//i.test(url)) return;
+    if (!isHttp(url)) return;
     Linking.openURL(url).catch(() => setError('This video link could not be opened.'));
   }
 
@@ -130,8 +155,13 @@ export default function RecipeScreen() {
     </Pressable>
   );
 
+  const rows = recipe ? ingredientRows(recipe.zutaten) : [];
+  const steps = recipe ? methodParagraphs(recipe.anleitung) : [];
+  const swatch = recipe ? heroSwatch(recipe.id) : t.colors.track;
+  const photo = recipe ? bookPhoto(recipe.id) : null;
+
   return (
-    <Screen topSafeArea header={header}>
+    <Screen topSafeArea header={header} scroll={draftMode}>
       {error ? <Text style={{ color: t.colors.warning, fontSize: 15 }}>{error}</Text> : null}
       {draftMode ? (
         <>
@@ -139,19 +169,86 @@ export default function RecipeScreen() {
           <Field label="Ingredients" value={ingredients} onChange={setIngredients} multiline />
           <Field label="Instructions" value={instructions} onChange={setInstructions} multiline />
           <Field label="Video" value={video} onChange={setVideo} />
-          {/^https?:\/\//i.test(video.trim()) ? <Button title="Open video" variant="tinted" onPress={openVideo} /> : null}
+          {isHttp(video) ? <Button title="Open video" variant="tinted" onPress={openVideo} /> : null}
           <Button title="Save" variant="tinted" onPress={() => saveDraft(confirmed)} />
           <Button title="Confirm" onPress={() => saveDraft(1)} />
           {params.draftId !== 'new' ? <Button title="Delete" variant="tinted" destructive onPress={removeDraft} /> : null}
         </>
       ) : recipe ? (
         <>
-          <Text style={{ fontSize: 28, fontWeight: '700', color: t.colors.label }}>{recipe.name}</Text>
-          <Text style={{ fontSize: 17, color: t.colors.label, lineHeight: 24 }}>{recipe.zutaten}</Text>
-          <Text style={{ fontSize: 17, color: t.colors.label, lineHeight: 24 }}>{recipe.anleitung}</Text>
-          <Field label="Video" value={video} onChange={setVideo} />
-          {/^https?:\/\//i.test(video.trim()) ? <Button title="Open video" variant="tinted" onPress={openVideo} /> : null}
-          <Button title="Save video" variant="tinted" onPress={saveBookVideo} />
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: t.spacing.lg }} keyboardShouldPersistTaps="handled">
+            <View
+              style={{
+                height: 200,
+                borderRadius: 18,
+                overflow: 'hidden',
+                backgroundColor: swatch,
+              }}
+            >
+              {photo ? (
+                <Image
+                  source={photo}
+                  testID="recipe-photo"
+                  resizeMode="cover"
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+                />
+              ) : (
+                <View testID="recipe-swatch" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: swatch }} />
+              )}
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(255,255,255,0.84)',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text numberOfLines={2} style={{ fontSize: 16, fontWeight: '600', lineHeight: 20, color: '#111111' }}>{recipe.name}</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 15, color: t.colors.secondaryLabel }}>
+              {`${recipe.kcal} kcal · ${recipe.protein} g protein · ${recipe.kohlenhydrate} g carbs · ${recipe.fett} g fat`}
+            </Text>
+            {rows.length > 0 ? (
+              <View style={{ gap: t.spacing.sm }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: 0.3, color: t.colors.secondaryLabel }}>INGREDIENTS</Text>
+                {rows.map((row, index) => (
+                  <View key={`${row.amount ?? ''}-${row.name}-${index}`} style={{ flexDirection: 'row', gap: t.spacing.md }}>
+                    {row.amount != null ? (
+                      <Text style={{ width: 112, fontSize: 17, fontWeight: '600', color: t.colors.secondaryLabel }}>{row.amount}</Text>
+                    ) : null}
+                    <Text style={{ flex: 1, fontSize: 17, lineHeight: 24, color: t.colors.label }}>{row.name}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {steps.length > 0 ? (
+              <View style={{ gap: t.spacing.sm }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', letterSpacing: 0.3, color: t.colors.secondaryLabel }}>METHOD</Text>
+                {steps.map((step, index) => (
+                  <Text key={`${index}-${step}`} style={{ fontSize: 17, lineHeight: 24, color: t.colors.label }}>{step}</Text>
+                ))}
+              </View>
+            ) : null}
+            <View style={{ gap: t.spacing.sm }}>
+              {isHttp(video) ? <Button title="Open video" variant="tinted" onPress={openVideo} /> : null}
+              <Pressable onPress={() => setEditingVideo(true)} hitSlop={8}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: t.colors.accent }}>
+                  {video.trim() ? 'Edit video' : 'Add video'}
+                </Text>
+              </Pressable>
+              {editingVideo ? (
+                <>
+                  <Field label="Video" value={video} onChange={setVideo} />
+                  <Button title="Save video" variant="tinted" onPress={saveBookVideo} />
+                </>
+              ) : null}
+            </View>
+          </ScrollView>
           <Button title={eaten ? 'Undo' : 'Eaten'} onPress={toggleEaten} />
         </>
       ) : null}
