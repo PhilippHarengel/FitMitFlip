@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { Image, Text, TextInput } from 'react-native';
+import { Image, Linking, Text, TextInput } from 'react-native';
 import { bookPhotoKey, draftPhotoKey } from '../../lib/recipePhotoKey';
 import { clearRecipePhotos, setRecipePhoto } from '../../lib/recipePhotos';
 import { loadCookbook, requestPlan } from '../../api/wochenplan';
@@ -52,6 +52,7 @@ jest.mock('../../db/queries', () => {
     plan: null as unknown,
     eaten: new Set<string>(),
     opinions: [] as { recipeId: string; name: string; liked: boolean }[],
+    videos: {} as Record<string, string>,
   };
   (globalThis as { __foodState?: typeof state }).__foodState = state;
   return {
@@ -80,8 +81,12 @@ jest.mock('../../db/queries', () => {
         row.confirmed = draft.confirmed ? 1 : 0;
       }
     },
-    getRecipeVideo: async () => '',
-    saveRecipeVideo: async () => {},
+    getRecipeVideo: async (id: string) => state.videos[id] ?? '',
+    saveRecipeVideo: async (id: string, url: string) => {
+      const trimmed = url.trim();
+      if (!trimmed) delete state.videos[id];
+      else state.videos[id] = trimmed;
+    },
     deleteRecipeDraft: async (id: number) => {
       state.drafts = state.drafts.filter((draft) => draft.id !== id);
     },
@@ -150,6 +155,7 @@ type FoodState = {
   plan: unknown;
   eaten: Set<string>;
   opinions: { recipeId: string; name: string; liked: boolean }[];
+  videos: Record<string, string>;
 };
 
 function state(): FoodState {
@@ -257,6 +263,7 @@ beforeEach(() => {
   state().plan = null;
   state().eaten.clear();
   state().opinions = [];
+  state().videos = {};
   nav().route = { name: 'FoodMain', params: {} };
   (loadCookbook as jest.Mock).mockReset();
   (requestPlan as jest.Mock).mockReset();
@@ -310,7 +317,8 @@ describe('food tab', () => {
     await press(renderer, 'Plan');
     expect(allText(renderer)).toContain('Hähnchen Reis');
     await press(renderer, 'Lunch · Hähnchen Reis · Cook');
-    expect(allText(renderer)).toContain('200 g Hähnchenbrust');
+    expect(allText(renderer)).toContain('200 g');
+    expect(allText(renderer)).toContain('Hähnchenbrust');
     expect(allText(renderer)).toContain('Reis kochen.');
     expect(allText(renderer)).toContain('Eaten');
     await press(renderer, 'Back');
@@ -321,13 +329,49 @@ describe('food tab', () => {
   it('shows ingredients and switches Eaten to Undo', async () => {
     const renderer = await renderHost();
     await press(renderer, 'Haferporridge');
-    expect(allText(renderer)).toContain('50 g Haferflocken; 200 ml Milch');
-    expect(allText(renderer)).toContain('Hafer kochen.');
+    const text = allText(renderer);
+    expect(text).toContain('Haferflocken');
+    expect(text).toContain('Milch');
+    expect(text).toContain('50 g');
+    expect(text).toContain('200 ml');
+    expect(text).not.toContain('50 g Haferflocken; 200 ml Milch');
+    expect(text).toContain('400 kcal · 20 g protein · 50 g carbs · 10 g fat');
+    expect(text).toContain('Hafer kochen.');
     await press(renderer, 'Eaten');
     expect(allText(renderer)).toContain('Undo');
     expect(allText(renderer)).not.toContain('Eaten');
     await press(renderer, 'Undo');
     expect(allText(renderer)).toContain('Eaten');
+  });
+
+  it('keeps the book video field closed until Add video and opens a saved https link', async () => {
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
+    const renderer = await renderHost();
+    await press(renderer, 'Haferporridge');
+    expect(allText(renderer)).toContain('Add video');
+    expect(allText(renderer)).not.toContain('Open video');
+    expect(renderer.root.findAllByType(TextInput).some((node) => node.props.accessibilityLabel === 'Video')).toBe(false);
+    await press(renderer, 'Add video');
+    await act(async () => {
+      const field = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Video');
+      field?.props.onChangeText('https://example.com/reel');
+    });
+    await press(renderer, 'Save video');
+    expect(allText(renderer)).toContain('Open video');
+    expect(allText(renderer)).toContain('Edit video');
+    expect(renderer.root.findAllByType(TextInput).some((node) => node.props.accessibilityLabel === 'Video')).toBe(false);
+    expect(state().videos[porridge.id]).toBe('https://example.com/reel');
+    await press(renderer, 'Open video');
+    expect(open).toHaveBeenCalledWith('https://example.com/reel');
+    await press(renderer, 'Edit video');
+    await act(async () => {
+      const field = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Video');
+      field?.props.onChangeText('not a link');
+    });
+    await press(renderer, 'Save video');
+    expect(allText(renderer)).not.toContain('Open video');
+    expect(allText(renderer)).toContain('Edit video');
+    open.mockRestore();
   });
 
   it('shows a photo only for the book id that has one when names match', async () => {
@@ -473,6 +517,7 @@ describe('food tab', () => {
   it('creates, renames and deletes a draft without sending it in the plan', async () => {
     const renderer = await renderHost();
     await press(renderer, 'New draft');
+    expect(renderer.root.findAllByType(TextInput).some((node) => node.props.accessibilityLabel === 'Video')).toBe(true);
     await act(async () => {
       const name = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Name');
       const ingredients = renderer.root.findAllByType(TextInput).find((node) => node.props.accessibilityLabel === 'Ingredients');

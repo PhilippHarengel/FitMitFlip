@@ -38,6 +38,7 @@ import { BOOK_PHOTO_FILES } from '../lib/bookPhotoFiles';
 import { bindBookPhotos, bookPhoto, draftPhoto, type PhotoSource } from '../lib/recipePhotos';
 import { useFoodSection, type FoodSectionName } from './foodSection';
 import { useCookbookTiles } from '../lib/cookbookTiles';
+import { swatchAt } from '../lib/cookbookSwatch';
 
 const MEAL_LABELS = [
   ['Breakfast', 'fruehstueck'],
@@ -216,8 +217,6 @@ export default function FoodScreen() {
   );
 }
 
-const POD_SWATCHES = ['#e2b15a', '#7ea84a', '#e09a2b', '#c9844a', '#c4a574', '#c4652d', '#d4a017', '#3f8f5b', '#d4724a', '#c4504a'];
-
 function Pod({
   title, mark, swatch, photo, onPress, testID, large, plus,
 }: {
@@ -311,7 +310,7 @@ function Cookbook({
     <Pod
       key={recipe.id}
       title={recipe.name}
-      swatch={POD_SWATCHES[index % POD_SWATCHES.length]}
+      swatch={swatchAt(index)}
       photo={bookPhoto(recipe.id)}
       onPress={() => onOpenRecipe(recipe.id)}
       testID="cookbook-pod"
@@ -325,7 +324,7 @@ function Cookbook({
           key={draft.id}
           title={draft.name}
           mark="Draft"
-          swatch={POD_SWATCHES[(index + 3) % POD_SWATCHES.length]}
+          swatch={swatchAt(index + 3)}
           photo={draftPhoto(draft.id)}
           onPress={() => onOpenDraft(draft.id)}
           testID="draft-pod"
