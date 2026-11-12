@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "animate-expo": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animate-expo/SKILL.md",
+      "computedHash": "3cbc0a9466a1404de98bec73eb6789257556e632f82c58319308a64ff42a5771",
+      "installMode": "copy"
+    }
+  }
+}
